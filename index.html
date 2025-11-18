@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Controle AS Mandacaru</title>
+    <link rel="icon" type="image/jpeg" href="logo.jpeg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- TELA DE LOGIN -->
+<div class="login-container" id="login-container">
+  <div class="login-card">
+    <h1 class="login-title">Controle AS Mandacaru</h1>
+    <p class="login-subtitle">Acesse para gerenciar a agenda</p>
+
+    <form id="login-form" class="form-grid login-form-grid">
+      <div class="form-group form-group-full">
+        <label for="login-usuario">Usuário</label>
+        <input type="text" id="login-usuario" autocomplete="username" required />
+      </div>
+
+      <div class="form-group form-group-full">
+        <label for="login-senha">Senha</label>
+        <input type="password" id="login-senha" autocomplete="current-password" required />
+      </div>
+
+      <div class="form-actions form-group-full login-actions">
+        <button type="submit">Entrar</button>
+      </div>
+
+      <p id="login-erro" class="login-error"></p>
+    </form>
+
+ 
+  </div>
+</div>
+
+  <!-- APP PRINCIPAL -->
+  <div class="app" id="app">
+    <aside class="sidebar">
+      <div class="logo">
+        <span class="logo-icon">AS</span>
+        <div class="logo-text">
+          <h1>Mandacaru</h1>
+          <p>Controle de Agenda</p>
+        </div>
+      </div>
+
+      <nav class="menu">
+        <button class="menu-item active" data-view="agenda">
+          Agenda
+        </button>
+        <button class="menu-item" data-view="cadastros">
+          Cadastros
+        </button>
+        <button class="menu-item" data-view="callcenter">
+          Call Center
+        </button>
+
+        <!-- Botão para voltar ao Hub de Sistemas -->
+        <button
+          type="button"
+          class="menu-item menu-item-hub"
+          id="btn-hub-sidebar"
+        >
+          ← Hub de Sistemas
+        </button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h2 id="view-title">Agenda</h2>
+        <span class="topbar-subtitle">Clínica AmorSaúde Mandacaru</span>
+      </header>
+
+      <section class="content">
+
+        <!-- =================== VIEW: AGENDA =================== -->
+        <section class="view view-active" id="view-agenda">
+          <div class="card">
+            <div class="card-header">
+              <h3>Agenda de Horários</h3>
+            </div>
+
+            <div class="card-body">
+              <form id="form-filtro-agenda" class="form-grid">
+                <div class="form-group">
+                  <label for="agenda-data">Data (grade diária)</label>
+                  <input type="date" id="agenda-data" required />
+                </div>
+                <div class="form-group">
+                  <label for="agenda-sala">Sala</label>
+                  <select id="agenda-sala">
+                    <option value="">Todas</option>
+                    <!-- via JS -->
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="agenda-medico">Médico</label>
+                  <select id="agenda-medico">
+                    <option value="">Todos</option>
+                    <!-- via JS -->
+                  </select>
+                </div>
+                <div class="form-actions">
+                  <button type="submit">Aplicar filtros</button>
+                  <button type="button" id="btn-novo-slot">Novo horário</button>
+                </div>
+                <div class="form-group form-group-full">
+                  <label for="agenda-mes">Mês (calendário / ocupação)</label>
+                  <input type="month" id="agenda-mes" />
+                </div>
+              </form>
+
+              <!-- Tabs de visualização da agenda -->
+              <div class="agenda-tabs">
+                <button class="agenda-tab agenda-tab-active" data-agenda-view="lista">
+                  Lista do médico
+                </button>
+                <button class="agenda-tab" data-agenda-view="calendario">
+                  Calendário mensal
+                </button>
+                <button class="agenda-tab" data-agenda-view="grade">
+                  Grade diária (salas x horários)
+                </button>
+              </div>
+
+              <!-- Subview: Lista -->
+              <div class="agenda-subview agenda-subview-active" id="agenda-subview-lista">
+                <table class="table" id="table-agenda">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Hora</th>
+                      <th>Sala</th>
+                      <th>Médico</th>
+                      <th>Obs</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- via JS -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Subview: Calendário -->
+              <div class="agenda-subview" id="agenda-subview-calendario">
+                <p class="text-muted">
+                  O calendário marca de verde os dias em que o médico selecionado possui agenda no mês escolhido.
+                </p>
+                <div class="calendar-legend">
+                  <span class="legend-item">
+                    <span class="legend-color legend-color-has-agenda"></span> Dia com agenda
+                  </span>
+                </div>
+                <div id="agenda-calendario-grid" class="calendar-grid">
+                  <!-- via JS -->
+                </div>
+              </div>
+
+              <!-- Subview: Grade diária -->
+              <div class="agenda-subview" id="agenda-subview-grade">
+                <p class="text-muted">
+                  Grade por horário x sala na data selecionada. Mostra o médico em cada sala/horário
+                  (filtra pelo médico selecionado, se escolher um).
+                </p>
+                <table class="table" id="table-agenda-grade">
+                  <thead>
+                    <tr>
+                      <th>Hora</th>
+                      <!-- salas via JS -->
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card de resumo de ocupação -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Resumo de ocupação das salas (por mês)</h3>
+            </div>
+            <div class="card-body">
+              <p class="text-muted">
+                Considerando o mês selecionado acima, segunda a sexta das 07:00 às 18:00
+                e sábado das 07:00 às 12:00.
+              </p>
+              <div class="summary-cards">
+                <div class="summary-card">
+                  <span>Total de salas cadastradas</span>
+                  <strong id="resumo-salas-total">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Salas com agenda no mês</span>
+                  <strong id="resumo-salas-ocupadas">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Horas possíveis de sala</span>
+                  <strong id="resumo-horas-possiveis">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Horas de sala usadas</span>
+                  <strong id="resumo-horas-usadas">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Ocupação das salas</span>
+                  <strong id="resumo-ocupacao-percent">0%</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Modal Agenda Slot -->
+        <div class="modal-backdrop" id="modal-agenda-backdrop">
+          <div class="modal">
+            <div class="modal-header">
+              <h3 id="modal-agenda-title">Novo horário</h3>
+              <button class="modal-close" id="modal-agenda-close">&times;</button>
+            </div>
+            <div class="modal-body">
+              <form id="form-agenda-slot" class="form-grid">
+                <input type="hidden" id="agenda-slot-id" />
+
+                <div class="form-group">
+                  <label for="slot-data">Data</label>
+                  <input type="date" id="slot-data" required />
+                </div>
+
+                <div class="form-group">
+                  <label for="slot-hora-inicio">Hora início</label>
+                  <input type="time" id="slot-hora-inicio" required />
+                </div>
+
+                <div class="form-group">
+                  <label for="slot-hora-fim">Hora fim</label>
+                  <input type="time" id="slot-hora-fim" required />
+                </div>
+
+                <div class="form-group">
+                  <label for="slot-sala">Sala</label>
+                  <select id="slot-sala" required></select>
+                </div>
+
+                <div class="form-group">
+                  <label for="slot-medico">Médico</label>
+                  <select id="slot-medico">
+                    <option value="">Sem vínculo</option>
+                  </select>
+                </div>
+
+                <div class="form-group form-group-full">
+                  <label for="slot-obs">Observações</label>
+                  <textarea id="slot-obs" rows="2" placeholder="Observações"></textarea>
+                </div>
+
+                <div class="form-actions form-group-full">
+                  <button type="button" id="btn-cancelar-slot">Cancelar</button>
+                  <button type="submit">Salvar horário</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- =================== VIEW: CADASTROS =================== -->
+        <section class="view" id="view-cadastros">
+          <div class="cards-grid">
+            <!-- Salas -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Salas</h3>
+              </div>
+              <div class="card-body">
+                <form id="form-sala" class="form-inline">
+                  <input type="hidden" id="sala-id" />
+                  <input type="text" id="sala-nome" placeholder="Nome da sala (ex: SALA 01)" required />
+                  <button type="submit">Salvar</button>
+                </form>
+                <table class="table" id="table-salas">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Nome</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- preenchido via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Especialidades -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Especialidades</h3>
+              </div>
+              <div class="card-body">
+                <form id="form-especialidade" class="form-inline">
+                  <input type="hidden" id="especialidade-id" />
+                  <input type="text" id="especialidade-nome" placeholder="Nome da especialidade" required />
+                  <button type="submit">Salvar</button>
+                </form>
+                <table class="table" id="table-especialidades">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Nome</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- preenchido via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Médicos -->
+            <div class="card card-full">
+              <div class="card-header">
+                <h3>Médicos / Profissionais</h3>
+              </div>
+              <div class="card-body">
+                <form id="form-medico" class="form-grid">
+                  <input type="hidden" id="medico-id" />
+                  <div class="form-group">
+                    <label for="medico-nome">Nome</label>
+                    <input type="text" id="medico-nome" placeholder="Nome do profissional" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="medico-especialidade">Especialidade</label>
+                    <select id="medico-especialidade">
+                      <!-- opções via JS -->
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="medico-pacientes-hora">Pacientes por hora</label>
+                    <input type="number" id="medico-pacientes-hora" min="1" value="4" required />
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit">Salvar</button>
+                  </div>
+                </form>
+
+                <table class="table" id="table-medicos">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Nome</th>
+                      <th>Especialidade</th>
+                      <th>Pacientes/hora</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =================== VIEW: CALL CENTER =================== -->
+        <section class="view" id="view-callcenter">
+          <div class="card">
+            <div class="card-header">
+              <h3>Call Center - Produção</h3>
+            </div>
+            <div class="card-body">
+
+              <div class="form-inline">
+                <label for="call-mes-resumo">Mês (resumo do call)</label>
+                <input type="month" id="call-mes-resumo" />
+              </div>
+
+              <div class="summary-cards">
+                <div class="summary-card">
+                  <span>Disponibilizados no mês</span>
+                  <strong id="call-sum-disp">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Agendados no mês</span>
+                  <strong id="call-sum-ag">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Confirmados no mês</span>
+                  <strong id="call-sum-conf">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Atendidos no mês</span>
+                  <strong id="call-sum-at">0</strong>
+                </div>
+                <div class="summary-card">
+                  <span>% Agendamento (mês)</span>
+                  <strong id="call-perc-ag">0%</strong>
+                </div>
+                <div class="summary-card">
+                  <span>% Confirmação (mês)</span>
+                  <strong id="call-perc-conf">0%</strong>
+                </div>
+                <div class="summary-card">
+                  <span>% Atendimento (mês)</span>
+                  <strong id="call-perc-at">0%</strong>
+                </div>
+              </div>
+
+              <form id="form-call" class="form-grid">
+                <input type="hidden" id="call-id" />
+                <div class="form-group">
+                  <label for="call-data">Data</label>
+                  <input type="date" id="call-data" required />
+                </div>
+                <div class="form-group">
+                  <label for="call-profissional">Profissional</label>
+                  <select id="call-profissional">
+                    <option value="">Geral</option>
+                    <!-- via JS -->
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="call-disponibilizados">Disponibilizados (auto)</label>
+                  <input type="number" id="call-disponibilizados" min="0" value="0" />
+                </div>
+                <div class="form-group">
+                  <label for="call-agendados">Agendados</label>
+                  <input type="number" id="call-agendados" min="0" value="0" />
+                </div>
+                <div class="form-group">
+                  <label for="call-confirmados">Confirmados</label>
+                  <input type="number" id="call-confirmados" min="0" value="0" />
+                </div>
+                <div class="form-group">
+                  <label for="call-atendidos">Atendidos</label>
+                  <input type="number" id="call-atendidos" min="0" value="0" />
+                </div>
+
+                <div class="form-actions form-group-full">
+                  <button type="button" id="call-limpar">Limpar</button>
+                  <button type="submit">Salvar</button>
+                </div>
+              </form>
+
+              <table class="table" id="table-call">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Profissional</th>
+                    <th>Disp.</th>
+                    <th>Agend.</th>
+                    <th>% Agend.</th>
+                    <th>Conf.</th>
+                    <th>% Conf.</th>
+                    <th>Atend.</th>
+                    <th>% Atend.</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
