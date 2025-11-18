@@ -149,7 +149,7 @@ if ($action === 'medicos.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $pacientesHora   = isset($_POST['pacientesHora']) ? (int)$_POST['pacientesHora'] : 0;
 
     if ($nome === '') jsonResponse(false, ['error' => 'Nome do médico é obrigatório.'], 400);
-    if ($pacientesHora <= 0) jsonResponse(false, ['error' => 'Pacientes por hora inválido.'], 400);
+    if ($pacientesHora < 0) jsonResponse(false, ['error' => 'Pacientes por hora inválido.'], 400);
 
     if ($id) {
         $stmt = $conn->prepare("UPDATE medicos SET nome = ?, especialidade_id = ?, pacientes_hora = ? WHERE id = ?");

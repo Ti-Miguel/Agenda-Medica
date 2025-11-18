@@ -479,11 +479,12 @@ if (formMedico) {
     if (!nome) return;
 
     const espId = medicoEspSelect.value ? Number(medicoEspSelect.value) : null;
-    const pacientesHora = Number(medicoPacientesHoraInput.value || 0) || 0;
-    if (pacientesHora <= 0) {
-      alert("Informe a quantidade de pacientes por hora.");
-      return;
-    }
+    const pacientesHora = Number(medicoPacientesHoraInput.value || 0);
+if (isNaN(pacientesHora) || pacientesHora < 0) {
+  alert("Informe uma quantidade válida de pacientes por hora (0 ou mais).");
+  return;
+}
+
 
     const idEdicao = medicoIdInput.value ? Number(medicoIdInput.value) : null;
 
@@ -600,6 +601,36 @@ const slotHoraInicioInput = document.getElementById("slot-hora-inicio");
 const slotHoraFimInput = document.getElementById("slot-hora-fim");
 const slotObsTextarea = document.getElementById("slot-obs");
 
+const extraDatesContainer = document.getElementById("slot-extra-dates-container");
+const btnAddExtraDate = document.getElementById("btn-add-extra-date");
+
+function clearExtraDates() {
+  if (extraDatesContainer) {
+    extraDatesContainer.innerHTML = "";
+  }
+}
+
+if (btnAddExtraDate && extraDatesContainer) {
+  btnAddExtraDate.addEventListener("click", () => {
+    const wrapper = document.createElement("div");
+    wrapper.classList.add("form-inline");
+
+    const input = document.createElement("input");
+    input.type = "date";
+    input.classList.add("slot-extra-date");
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "Remover";
+    removeBtn.addEventListener("click", () => wrapper.remove());
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(removeBtn);
+    extraDatesContainer.appendChild(wrapper);
+  });
+}
+
+
 // Resumo
 const resumoSalasTotal = document.getElementById("resumo-salas-total");
 const resumoSalasOcupadas = document.getElementById("resumo-salas-ocupadas");
@@ -627,8 +658,10 @@ btnNovoSlot.addEventListener("click", () => {
   slotSalaSelect.value = "";
   slotMedicoSelect.value = "";
   slotObsTextarea.value = "";
+  clearExtraDates();
   abrirModalAgenda("Novo horário");
 });
+
 
 // Tabs da agenda
 agendaTabs.forEach((tab) => {
@@ -699,6 +732,9 @@ function renderAgendaLista() {
       slotSalaSelect.value = slot.salaId;
       slotMedicoSelect.value = slot.medicoId || "";
       slotObsTextarea.value = slot.obs || "";
+      clearExtraDates();
+abrirModalAgenda("Editar horário");
+
       abrirModalAgenda("Editar horário");
     });
 
@@ -983,38 +1019,61 @@ agendaMedicoSelect.addEventListener("change", renderAgendaAll);
 // salvar slot agenda
 formAgendaSlot.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const data = slotDataInput.value;
+  const dataPrincipal = slotDataInput.value;
   const horaInicio = slotHoraInicioInput.value;
   const horaFim = slotHoraFimInput.value;
   const salaId = Number(slotSalaSelect.value);
   const medicoId = slotMedicoSelect.value ? Number(slotMedicoSelect.value) : null;
   const obs = slotObsTextarea.value.trim();
 
-  if (!data || !horaInicio || !horaFim || !salaId) {
+  if (!dataPrincipal || !horaInicio || !horaFim || !salaId) {
     alert("Preencha data, horário e sala.");
     return;
   }
 
   const idEdicao = slotIdInput.value ? Number(slotIdInput.value) : null;
 
-  try {
-    const slotSalvo = await apiSaveAgendaSlot(
-      idEdicao,
-      data,
-      horaInicio,
-      horaFim,
-      salaId,
-      medicoId,
-      obs
-    );
+  // Coletar datas adicionais (se houver)
+  let datasAdicionais = [];
+  if (extraDatesContainer) {
+    datasAdicionais = Array.from(
+      extraDatesContainer.querySelectorAll("input.slot-extra-date")
+    )
+      .map((inp) => inp.value)
+      .filter((v) => v && v !== dataPrincipal);
+  }
 
+  try {
     if (idEdicao) {
+      // Edição: só atualiza o slot principal
+      const slotSalvo = await apiSaveAgendaSlot(
+        idEdicao,
+        dataPrincipal,
+        horaInicio,
+        horaFim,
+        salaId,
+        medicoId,
+        obs
+      );
       const slot = agendaSlots.find((s) => s.id === idEdicao);
       if (slot) {
         Object.assign(slot, slotSalvo);
       }
     } else {
-      agendaSlots.push(slotSalvo);
+      // Novo: cria 1 slot para a data principal + 1 para cada data adicional
+      const todasDatas = [dataPrincipal, ...datasAdicionais];
+      for (const data of todasDatas) {
+        const slotSalvo = await apiSaveAgendaSlot(
+          null,
+          data,
+          horaInicio,
+          horaFim,
+          salaId,
+          medicoId,
+          obs
+        );
+        agendaSlots.push(slotSalvo);
+      }
     }
 
     fecharModalAgenda();
@@ -1024,6 +1083,7 @@ formAgendaSlot.addEventListener("submit", async (e) => {
     alert(err.message || "Erro ao salvar horário.");
   }
 });
+
 
 agendaMesInput.addEventListener("change", () => {
   renderAgendaCalendario();

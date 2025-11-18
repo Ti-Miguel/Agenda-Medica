@@ -258,6 +258,18 @@
                 </div>
 
                 <div class="form-group form-group-full">
+  <label>Dias adicionais (opcional)</label>
+  <div class="extra-dates-container" id="slot-extra-dates-container">
+    <!-- datas adicionais serão adicionadas aqui via JS -->
+  </div>
+  <button type="button" id="btn-add-extra-date">+ Adicionar dia</button>
+  <p class="text-muted">
+    Use para repetir esse mesmo horário para o mesmo médico em outras datas.
+  </p>
+</div>
+
+
+                <div class="form-group form-group-full">
                   <label for="slot-obs">Observações</label>
                   <textarea id="slot-obs" rows="2" placeholder="Observações"></textarea>
                 </div>
@@ -346,7 +358,7 @@
                   </div>
                   <div class="form-group">
                     <label for="medico-pacientes-hora">Pacientes por hora</label>
-                    <input type="number" id="medico-pacientes-hora" min="1" value="4" required />
+                        <input type="number" id="medico-pacientes-hora" min="0" value="0" required />
                   </div>
                   <div class="form-actions">
                     <button type="submit">Salvar</button>
