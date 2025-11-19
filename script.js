@@ -550,11 +550,16 @@ function renderSelectsGlobais() {
   });
 
   // Médicos
+   // Médicos em filtros, modal slot e call center (ordenados por nome)
   agendaMedicoSelect.innerHTML = `<option value="">Todos</option>`;
   slotMedicoSelect.innerHTML = `<option value="">Sem vínculo</option>`;
   callProfSelect.innerHTML = `<option value="">Geral</option>`;
 
-  medicos.forEach((m) => {
+  const medicosOrdenados = [...medicos].sort((a, b) =>
+    a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })
+  );
+
+  medicosOrdenados.forEach((m) => {
     const opt1 = document.createElement("option");
     opt1.value = m.id;
     opt1.textContent = m.nome;
@@ -571,6 +576,7 @@ function renderSelectsGlobais() {
     callProfSelect.appendChild(opt3);
   });
 }
+
 
 // ====================== AGENDA ======================
 
