@@ -11,6 +11,45 @@ function jsonResponse($success, $data = [], $httpCode = 200) {
     exit;
 }
 
+/**
+ * Verifica se existe conflito de horário na agenda
+ * (mesma data, mesma sala, intervalo se sobrepondo).
+ *
+ * Regra: [novoInicio, novoFim] conflita com [iniExist, fimExist]
+ * se: novoInicio < fimExist AND novoFim > iniExist
+ */
+function hasAgendaConflict(mysqli $conn, string $data, int $salaId, string $horaInicio, string $horaFim, ?int $ignoreId = null): bool {
+    // se horaFim <= horaInicio, já consideramos inválido/conflito
+    if ($horaFim <= $horaInicio) {
+        return true;
+    }
+
+    $sql = "SELECT COUNT(*) AS total
+            FROM agenda_slots
+            WHERE data = ?
+              AND sala_id = ?
+              AND (hora_inicio < ? AND hora_fim > ?)";
+
+    if ($ignoreId !== null) {
+        $sql .= " AND id <> ?";
+    }
+
+    if ($ignoreId !== null) {
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("sissi", $data, $salaId, $horaFim, $horaInicio, $ignoreId);
+    } else {
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("siss", $data, $salaId, $horaFim, $horaInicio);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : ['total' => 0];
+    $stmt->close();
+
+    return ((int)($row['total'] ?? 0)) > 0;
+}
+
 /* ===================== SALAS ===================== */
 
 if ($action === 'salas.list') {
@@ -227,6 +266,11 @@ if ($action === 'agenda.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         jsonResponse(false, ['error' => 'Dados obrigatórios da agenda não informados.'], 400);
     }
 
+    // 🔒 Verifica conflito de sala/horário na data
+    if (hasAgendaConflict($conn, $data, $salaId, $horaInicio, $horaFim, $id)) {
+        jsonResponse(false, ['error' => 'Já existe agenda nessa sala e horário para a data informada.'], 400);
+    }
+
     if ($id) {
         $stmt = $conn->prepare("UPDATE agenda_slots
                                 SET data = ?, hora_inicio = ?, hora_fim = ?, sala_id = ?, medico_id = ?, obs = ?
@@ -347,6 +391,113 @@ if ($action === 'call.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM call_entries WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $ok = $stmt->execute();
+    $stmt->close();
+
+    if (!$ok) jsonResponse(false, ['error' => $conn->error], 500);
+
+    jsonResponse(true);
+}
+
+/* ===================== CANCELAMENTOS ===================== */
+/*
+ * Esperado no POST de save:
+ *  - id (opcional, p/ edição)
+ *  - data (yyyy-mm-dd)
+ *  - medicoId (opcional)
+ *  - especialidadeId (opcional)
+ *  - horaInicio (HH:MM)
+ *  - horaFim (HH:MM)
+ *  - qtdCancelados (int)  -> calculado automático no front e enviado
+ *  - motivo (texto)
+ */
+
+if ($action === 'cancelamentos.list') {
+    $sql = "SELECT id, data, medico_id, especialidade_id, hora_inicio, hora_fim,
+                   qtd_cancelados, motivo
+            FROM cancelamentos
+            ORDER BY data DESC, hora_inicio ASC, id ASC";
+    $result = $conn->query($sql);
+    if (!$result) jsonResponse(false, ['error' => $conn->error], 500);
+
+    $items = [];
+    while ($row = $result->fetch_assoc()) {
+        $items[] = [
+            'id'             => (int)$row['id'],
+            'data'           => $row['data'],
+            'medicoId'       => $row['medico_id'] !== null ? (int)$row['medico_id'] : null,
+            'especialidadeId'=> $row['especialidade_id'] !== null ? (int)$row['especialidade_id'] : null,
+            'horaInicio'     => substr($row['hora_inicio'], 0, 5),
+            'horaFim'        => substr($row['hora_fim'], 0, 5),
+            'qtdCancelados'  => (int)$row['qtd_cancelados'],
+            'motivo'         => $row['motivo'] ?? ''
+        ];
+    }
+
+    jsonResponse(true, ['cancelamentos' => $items]);
+}
+
+if ($action === 'cancelamentos.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id              = isset($_POST['id']) && $_POST['id'] !== '' ? (int)$_POST['id'] : null;
+    $data            = trim($_POST['data'] ?? '');
+    $medicoId        = isset($_POST['medicoId']) && $_POST['medicoId'] !== '' ? (int)$_POST['medicoId'] : null;
+    $especialidadeId = isset($_POST['especialidadeId']) && $_POST['especialidadeId'] !== '' ? (int)$_POST['especialidadeId'] : null;
+    $horaInicio      = trim($_POST['horaInicio'] ?? '');
+    $horaFim         = trim($_POST['horaFim'] ?? '');
+    $qtdCancelados   = isset($_POST['qtdCancelados']) ? (int)$_POST['qtdCancelados'] : 0;
+    $motivo          = trim($_POST['motivo'] ?? '');
+
+    if ($data === '' || $horaInicio === '' || $horaFim === '') {
+        jsonResponse(false, ['error' => 'Data e horário são obrigatórios.'], 400);
+    }
+
+    if ($horaFim <= $horaInicio) {
+        jsonResponse(false, ['error' => 'Horário final deve ser maior que o inicial.'], 400);
+    }
+
+    if ($qtdCancelados < 0) {
+        jsonResponse(false, ['error' => 'Quantidade de cancelados inválida.'], 400);
+    }
+
+    if ($id) {
+        $stmt = $conn->prepare("UPDATE cancelamentos
+                                SET data = ?, medico_id = ?, especialidade_id = ?, hora_inicio = ?, hora_fim = ?, qtd_cancelados = ?, motivo = ?
+                                WHERE id = ?");
+        $stmt->bind_param("siissisi", $data, $medicoId, $especialidadeId, $horaInicio, $horaFim, $qtdCancelados, $motivo, $id);
+        $ok = $stmt->execute();
+        $stmt->close();
+    } else {
+        $stmt = $conn->prepare("INSERT INTO cancelamentos
+                                (data, medico_id, especialidade_id, hora_inicio, hora_fim, qtd_cancelados, motivo)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("siissis", $data, $medicoId, $especialidadeId, $horaInicio, $horaFim, $qtdCancelados, $motivo);
+        $ok = $stmt->execute();
+        $id = $stmt->insert_id;
+        $stmt->close();
+    }
+
+    if (!$ok) jsonResponse(false, ['error' => $conn->error], 500);
+
+    jsonResponse(true, [
+        'cancelamento' => [
+            'id'             => $id,
+            'data'           => $data,
+            'medicoId'       => $medicoId,
+            'especialidadeId'=> $especialidadeId,
+            'horaInicio'     => $horaInicio,
+            'horaFim'        => $horaFim,
+            'qtdCancelados'  => $qtdCancelados,
+            'motivo'         => $motivo
+        ]
+    ]);
+}
+
+if ($action === 'cancelamentos.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+    if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
+
+    $stmt = $conn->prepare("DELETE FROM cancelamentos WHERE id = ?");
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();

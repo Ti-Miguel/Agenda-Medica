@@ -4,38 +4,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Controle AS Mandacaru</title>
-    <link rel="icon" type="image/jpeg" href="logo.jpeg" />
   <link rel="stylesheet" href="style.css" />
+    <link rel="icon" type="image/jpeg" href="logo.jpeg">
+
 </head>
 <body>
 
-  <!-- TELA DE LOGIN -->
-<div class="login-container" id="login-container">
-  <div class="login-card">
-    <h1 class="login-title">Controle AS Mandacaru</h1>
-    <p class="login-subtitle">Acesse para gerenciar a agenda</p>
+   <!-- TELA DE LOGIN -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <h1>Controle AS Mandacaru</h1>
+      <p class="login-subtitle">Acesse o painel da agenda</p>
+      <form id="login-form" class="form-grid">
+        <div class="form-group form-group-full">
+          <label for="login-usuario">Usuário</label>
+          <input type="text" id="login-usuario" placeholder="Digite o usuário" required />
+        </div>
+        <div class="form-group form-group-full">
+          <label for="login-senha">Senha</label>
+          <input type="password" id="login-senha" placeholder="Digite a senha" required />
+        </div>
+        <div class="form-actions form-group-full">
+          <button type="submit">Entrar</button>
+        </div>
+      </form>
 
-    <form id="login-form" class="form-grid login-form-grid">
-      <div class="form-group form-group-full">
-        <label for="login-usuario">Usuário</label>
-        <input type="text" id="login-usuario" autocomplete="username" required />
-      </div>
+      <!-- AQUI: mensagem de erro do login -->
+      <p id="login-msg" class="login-error"></p>
 
-      <div class="form-group form-group-full">
-        <label for="login-senha">Senha</label>
-        <input type="password" id="login-senha" autocomplete="current-password" required />
-      </div>
-
-      <div class="form-actions form-group-full login-actions">
-        <button type="submit">Entrar</button>
-      </div>
-
-      <p id="login-erro" class="login-error"></p>
-    </form>
-
- 
+      
+    </div>
   </div>
-</div>
+
 
   <!-- APP PRINCIPAL -->
   <div class="app" id="app">
@@ -48,6 +48,8 @@
         </div>
       </div>
 
+      <button class="hub-button" id="btn-hub">← Voltar ao Hub</button>
+
       <nav class="menu">
         <button class="menu-item active" data-view="agenda">
           Agenda
@@ -58,14 +60,8 @@
         <button class="menu-item" data-view="callcenter">
           Call Center
         </button>
-
-        <!-- Botão para voltar ao Hub de Sistemas -->
-        <button
-          type="button"
-          class="menu-item menu-item-hub"
-          id="btn-hub-sidebar"
-        >
-          ← Hub de Sistemas
+        <button class="menu-item" data-view="cancelamentos">
+          Cancelamentos
         </button>
       </nav>
     </aside>
@@ -258,16 +254,13 @@
                 </div>
 
                 <div class="form-group form-group-full">
-  <label>Dias adicionais (opcional)</label>
-  <div class="extra-dates-container" id="slot-extra-dates-container">
-    <!-- datas adicionais serão adicionadas aqui via JS -->
-  </div>
-  <button type="button" id="btn-add-extra-date">+ Adicionar dia</button>
-  <p class="text-muted">
-    Use para repetir esse mesmo horário para o mesmo médico em outras datas.
-  </p>
-</div>
-
+                  <label>Dias adicionais (opcional)</label>
+                  <div class="extra-dates-container" id="slot-extra-dates-container"></div>
+                  <button type="button" id="btn-add-extra-date">+ Adicionar dia</button>
+                  <p class="text-muted">
+                    Use para repetir esse mesmo horário para o mesmo médico em outras datas.
+                  </p>
+                </div>
 
                 <div class="form-group form-group-full">
                   <label for="slot-obs">Observações</label>
@@ -358,7 +351,7 @@
                   </div>
                   <div class="form-group">
                     <label for="medico-pacientes-hora">Pacientes por hora</label>
-                        <input type="number" id="medico-pacientes-hora" min="0" value="0" required />
+                    <input type="number" id="medico-pacientes-hora" min="0" value="0" required />
                   </div>
                   <div class="form-actions">
                     <button type="submit">Salvar</button>
@@ -487,10 +480,115 @@
           </div>
         </section>
 
+        <!-- =================== VIEW: CANCELAMENTOS =================== -->
+        <section class="view" id="view-cancelamentos">
+          <div class="card">
+            <div class="card-header">
+              <h3>Registro de Cancelamentos</h3>
+            </div>
+            <div class="card-body">
+              <!-- FORM NOVO CANCELAMENTO -->
+              <form id="form-cancel" class="form-grid">
+                <input type="hidden" id="cancel-id" />
+
+                <div class="form-group">
+                  <label for="cancel-data">Data</label>
+                  <input type="date" id="cancel-data" required />
+                </div>
+
+                <div class="form-group">
+                  <label for="cancel-medico">Médico</label>
+                  <select id="cancel-medico">
+                    <option value="">Selecione</option>
+                    <!-- via JS -->
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="cancel-especialidade">Especialidade</label>
+                  <input type="text" id="cancel-especialidade" readonly />
+                </div>
+
+                <div class="form-group">
+                  <label for="cancel-hora-inicio">Hora início</label>
+                  <input type="time" id="cancel-hora-inicio" required />
+                </div>
+
+                <div class="form-group">
+                  <label for="cancel-hora-fim">Hora fim</label>
+                  <input type="time" id="cancel-hora-fim" required />
+                </div>
+
+                <div class="form-group form-group-full">
+                  <label for="cancel-motivo">Motivo do cancelamento</label>
+                  <textarea id="cancel-motivo" rows="2" required></textarea>
+                </div>
+
+                <div class="form-actions form-group-full">
+                  <button type="button" id="cancel-limpar">Limpar</button>
+                  <button type="submit">Salvar cancelamento</button>
+                </div>
+              </form>
+
+              <!-- RESUMO -->
+              <div class="summary-cards">
+                <div class="summary-card">
+                  <span>Total de cancelamentos (filtro)</span>
+                  <strong id="cancel-count">0</strong>
+                </div>
+              </div>
+
+              <hr style="margin: 14px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+              <!-- FILTROS LISTA -->
+              <form id="form-cancel-filtro" class="form-grid">
+                <div class="form-group">
+                  <label for="cancel-filtro-data-inicio">Data inicial</label>
+                  <input type="date" id="cancel-filtro-data-inicio" />
+                </div>
+                <div class="form-group">
+                  <label for="cancel-filtro-data-fim">Data final</label>
+                  <input type="date" id="cancel-filtro-data-fim" />
+                </div>
+                <div class="form-group">
+                  <label for="cancel-filtro-medico">Médico</label>
+                  <select id="cancel-filtro-medico">
+                    <option value="">Todos</option>
+                    <!-- via JS -->
+                  </select>
+                </div>
+                <div class="form-actions">
+                  <button type="submit">Aplicar filtros</button>
+                </div>
+              </form>
+
+              <!-- TABELA DE CANCELAMENTOS -->
+              <table class="table" id="table-cancelamentos">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Hora</th>
+                    <th>Médico</th>
+                    <th>Especialidade</th>
+                    <th>Motivo</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
       </section>
     </main>
   </div>
 
   <script src="script.js"></script>
+
+
+
 </body>
 </html>

@@ -1,190 +1,160 @@
-// ====================== LOGIN (FRONT-END) ======================
+// ====================== LOGIN / SESSÃO ======================
 
+const LOGIN_STORAGE_KEY = "mandacaru_agenda_logged";
 const LOGIN_USER = "agendamandacaru";
 const LOGIN_PASS = "amor@100";
 
-// hub.html está na raiz do public_html, e este sistema está em uma pasta
-const HUB_URL = "../hub.html";
-
-const loginContainer = document.getElementById("login-container");
-const appContainer = document.getElementById("app");
-const loginForm = document.getElementById("login-form");
-const loginUsuarioInput = document.getElementById("login-usuario");
-const loginSenhaInput = document.getElementById("login-senha");
-const loginErroSpan = document.getElementById("login-erro");
-const btnHubSidebar = document.getElementById("btn-hub-sidebar");
-
 function mostrarApp() {
-  if (loginContainer) loginContainer.style.display = "none";
-  if (appContainer) appContainer.style.display = "flex";
+  const app = document.getElementById("app");
+  const login = document.getElementById("login-screen"); // <-- aqui
+  if (app) app.style.display = "flex";
+  if (login) login.style.display = "none";
 }
 
 function mostrarLogin() {
-  if (appContainer) appContainer.style.display = "none";
-  if (loginContainer) loginContainer.style.display = "flex";
+  const app = document.getElementById("app");
+  const login = document.getElementById("login-screen"); // <-- aqui
+  if (app) app.style.display = "none";
+  if (login) login.style.display = "flex";
 }
 
-function verificarSessaoLogin() {
-  // sempre exige login ao entrar
-  mostrarLogin();
-  if (loginUsuarioInput) loginUsuarioInput.focus();
-}
+function initLogin() {
+  const loginForm = document.getElementById("login-form");
+  const userInput = document.getElementById("login-usuario");
+  const passInput = document.getElementById("login-senha");
+  const msgEl = document.getElementById("login-msg");
 
-if (loginForm) {
-  loginForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const u = loginUsuarioInput.value.trim();
-    const s = loginSenhaInput.value;
+  // Se não tiver formulário de login, só segue a vida (fallback)
+  if (!loginForm || !userInput || !passInput) {
+    if (typeof init === "function") {
+      init();
+    }
+    return;
+  }
 
-    if (u === LOGIN_USER && s === LOGIN_PASS) {
-      loginErroSpan.textContent = "";
+  // Se já estiver logado, pula direto pro app
+  if (sessionStorage.getItem(LOGIN_STORAGE_KEY) === "1") {
+    mostrarApp();
+    if (typeof init === "function") {
+      init();
+    }
+  } else {
+    mostrarLogin();
+  }
+
+  loginForm.addEventListener("submit", function (e) {
+    e.preventDefault(); // NÃO recarrega a página
+
+    const usuario = userInput.value.trim().toLowerCase();
+    const senha = passInput.value;
+
+    if (usuario === LOGIN_USER && senha === LOGIN_PASS) {
+      sessionStorage.setItem(LOGIN_STORAGE_KEY, "1");
+      if (msgEl) msgEl.textContent = "";
       mostrarApp();
-      init(); // carrega o sistema depois do login
+      if (typeof init === "function") {
+        init();
+      }
     } else {
-      loginErroSpan.textContent = "Usuário ou senha inválidos.";
-      loginSenhaInput.value = "";
-      loginSenhaInput.focus();
+      if (msgEl) {
+        msgEl.textContent = "Usuário ou senha inválidos.";
+      } else {
+        alert("Usuário ou senha inválidos.");
+      }
     }
   });
 }
 
-if (btnHubSidebar) {
-  btnHubSidebar.addEventListener("click", () => {
-    window.location.href = HUB_URL;
+
+// ====================== BOTÃO VOLTAR AO HUB ======================
+const btnHub = document.getElementById("btn-hub");
+
+if (btnHub) {
+  btnHub.addEventListener("click", () => {
+    // como o hub.html está na raiz da public_html:
+    window.location.href = "/hub.html";
+    // se por algum motivo não abrir, teste:
+    // window.location.href = "../hub.html";
   });
 }
 
-// ====================== ESTADO / HELPERS ======================
+
+
+// ====================== API HELPERS (PHP) ======================
+
+const API_BASE = "api.php";
+
+async function apiGet(action, params = {}) {
+  const url = new URL(API_BASE, window.location.href);
+  url.searchParams.set("action", action);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") {
+      url.searchParams.set(k, v);
+    }
+  }
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "Accept": "application/json"
+    }
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!json || json.success === undefined) {
+    throw new Error("Resposta inválida da API.");
+  }
+  if (!json.success) {
+    throw new Error(json.error || "Erro na API.");
+  }
+  return json;
+}
+
+async function apiPost(action, data = {}) {
+  const url = `${API_BASE}?action=${encodeURIComponent(action)}`;
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined && v !== null) {
+      body.append(k, v);
+    }
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      "Accept": "application/json"
+    },
+    body: body.toString()
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!json || json.success === undefined) {
+    throw new Error("Resposta inválida da API.");
+  }
+  if (!json.success) {
+    throw new Error(json.error || "Erro na API.");
+  }
+  return json;
+}
+
+function showError(msg, err) {
+  console.error(msg, err);
+  if (msg) alert(msg);
+}
+
+function pad2(n) {
+  return n.toString().padStart(2, "0");
+}
+
+// ====================== ESTADO ======================
 
 let salas = [];
 let especialidades = [];
 let medicos = [];
 let agendaSlots = [];
 let callEntries = [];
-
-function pad2(n) {
-  return n.toString().padStart(2, "0");
-}
-
-// ====================== API HELPERS ======================
-
-async function api(action, method = "GET", body = null) {
-  const options = { method };
-  if (body) options.body = body;
-
-  const resp = await fetch("api.php?action=" + encodeURIComponent(action), options);
-  let data;
-  try {
-    data = await resp.json();
-  } catch (e) {
-    throw new Error("Erro na resposta do servidor (" + action + ").");
-  }
-  if (!data.success) {
-    throw new Error(data.error || "Erro na API (" + action + ").");
-  }
-  return data;
-}
-
-// listas iniciais
-async function apiListAll() {
-  const [salasData, espData, medData, agendaData, callData] = await Promise.all([
-    api("salas.list"),
-    api("especialidades.list"),
-    api("medicos.list"),
-    api("agenda.list"),
-    api("call.list"),
-  ]);
-
-  salas = salasData.salas || [];
-  especialidades = espData.especialidades || [];
-  medicos = medData.medicos || [];
-  agendaSlots = agendaData.slots || [];
-  callEntries = callData.entries || [];
-}
-
-// salvar/excluir entidades
-
-async function apiSaveSala(id, nome) {
-  const fd = new FormData();
-  if (id) fd.append("id", id);
-  fd.append("nome", nome);
-  const data = await api("salas.save", "POST", fd);
-  return data.sala;
-}
-
-async function apiDeleteSala(id) {
-  const fd = new FormData();
-  fd.append("id", id);
-  await api("salas.delete", "POST", fd);
-}
-
-async function apiSaveEspecialidade(id, nome) {
-  const fd = new FormData();
-  if (id) fd.append("id", id);
-  fd.append("nome", nome);
-  const data = await api("especialidades.save", "POST", fd);
-  return data.especialidade;
-}
-
-async function apiDeleteEspecialidade(id) {
-  const fd = new FormData();
-  fd.append("id", id);
-  await api("especialidades.delete", "POST", fd);
-}
-
-async function apiSaveMedico(id, nome, especialidadeId, pacientesHora) {
-  const fd = new FormData();
-  if (id) fd.append("id", id);
-  fd.append("nome", nome);
-  if (especialidadeId) fd.append("especialidadeId", especialidadeId);
-  fd.append("pacientesHora", pacientesHora);
-  const data = await api("medicos.save", "POST", fd);
-  return data.medico;
-}
-
-async function apiDeleteMedico(id) {
-  const fd = new FormData();
-  fd.append("id", id);
-  await api("medicos.delete", "POST", fd);
-}
-
-async function apiSaveAgendaSlot(id, data, horaInicio, horaFim, salaId, medicoId, obs) {
-  const fd = new FormData();
-  if (id) fd.append("id", id);
-  fd.append("data", data);
-  fd.append("horaInicio", horaInicio);
-  fd.append("horaFim", horaFim);
-  fd.append("salaId", salaId);
-  if (medicoId) fd.append("medicoId", medicoId);
-  fd.append("obs", obs || "");
-  const dataResp = await api("agenda.save", "POST", fd);
-  return dataResp.slot;
-}
-
-async function apiDeleteAgendaSlot(id) {
-  const fd = new FormData();
-  fd.append("id", id);
-  await api("agenda.delete", "POST", fd);
-}
-
-async function apiSaveCallEntry(id, data, profissionalId, disp, ag, conf, at) {
-  const fd = new FormData();
-  if (id) fd.append("id", id);
-  fd.append("data", data);
-  if (profissionalId) fd.append("profissionalId", profissionalId);
-  fd.append("disponibilizados", disp);
-  fd.append("agendados", ag);
-  fd.append("confirmados", conf);
-  fd.append("atendidos", at);
-  const dataResp = await api("call.save", "POST", fd);
-  return dataResp.entry;
-}
-
-async function apiDeleteCallEntry(id) {
-  const fd = new FormData();
-  fd.append("id", id);
-  await api("call.delete", "POST", fd);
-}
+let cancelamentos = [];
 
 // ====================== NAV / VIEWS ======================
 
@@ -193,19 +163,19 @@ const views = document.querySelectorAll(".view");
 const viewTitle = document.getElementById("view-title");
 
 menuItems.forEach((btn) => {
-  const viewName = btn.dataset.view;
-  if (!viewName) return; // ignora botão do hub
-
   btn.addEventListener("click", () => {
     menuItems.forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
 
+    const viewName = btn.dataset.view;
     viewTitle.textContent =
       viewName === "agenda"
         ? "Agenda"
         : viewName === "cadastros"
         ? "Cadastros"
-        : "Call Center";
+        : viewName === "callcenter"
+        ? "Call Center"
+        : "Cancelamentos";
 
     views.forEach((v) => v.classList.remove("view-active"));
     document.getElementById(`view-${viewName}`).classList.add("view-active");
@@ -227,6 +197,10 @@ function getSalaNome(id) {
 function getMedicoNome(id) {
   const m = medicos.find((x) => x.id === id);
   return m ? m.nome : "";
+}
+
+function getMedicoPorId(id) {
+  return medicos.find((m) => m.id === id) || null;
 }
 
 // ====================== CADASTROS - SALAS ======================
@@ -263,15 +237,15 @@ function renderSalas() {
     btnDel.addEventListener("click", async () => {
       if (!confirm("Excluir sala?")) return;
       try {
-        await apiDeleteSala(sala.id);
-        salas = salas.filter((s) => s.id !== sala.id);
+        await apiPost("salas.delete", { id: sala.id });
+        await loadSalas();
         renderSalas();
         renderSelectsGlobais();
         updateCallDisponibilizados();
         renderAgendaResumoMes();
         renderAgendaGrade();
       } catch (err) {
-        alert(err.message || "Erro ao excluir sala.");
+        showError("Erro ao excluir sala.", err);
       }
     });
 
@@ -287,36 +261,30 @@ function renderSalas() {
   });
 }
 
-if (formSala) {
-  formSala.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const nome = salaNomeInput.value.trim();
-    if (!nome) return;
+formSala.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nome = salaNomeInput.value.trim();
+  if (!nome) return;
 
-    const idEdicao = salaIdInput.value ? Number(salaIdInput.value) : null;
+  const idEdicao = salaIdInput.value ? Number(salaIdInput.value) : null;
 
-    try {
-      const salaSalva = await apiSaveSala(idEdicao, nome);
-
-      if (idEdicao) {
-        const sala = salas.find((s) => s.id === idEdicao);
-        if (sala) sala.nome = salaSalva.nome;
-      } else {
-        salas.push(salaSalva);
-      }
-
-      salaIdInput.value = "";
-      salaNomeInput.value = "";
-      renderSalas();
-      renderSelectsGlobais();
-      updateCallDisponibilizados();
-      renderAgendaResumoMes();
-      renderAgendaGrade();
-    } catch (err) {
-      alert(err.message || "Erro ao salvar sala.");
-    }
-  });
-}
+  try {
+    await apiPost("salas.save", {
+      id: idEdicao || "",
+      nome
+    });
+    salaIdInput.value = "";
+    salaNomeInput.value = "";
+    await loadSalas();
+    renderSalas();
+    renderSelectsGlobais();
+    updateCallDisponibilizados();
+    renderAgendaResumoMes();
+    renderAgendaGrade();
+  } catch (err) {
+    showError("Erro ao salvar sala.", err);
+  }
+});
 
 // ====================== CADASTROS - ESPECIALIDADES ======================
 
@@ -352,12 +320,12 @@ function renderEspecialidades() {
     btnDel.addEventListener("click", async () => {
       if (!confirm("Excluir especialidade?")) return;
       try {
-        await apiDeleteEspecialidade(esp.id);
-        especialidades = especialidades.filter((e) => e.id !== esp.id);
+        await apiPost("especialidades.delete", { id: esp.id });
+        await loadEspecialidades();
         renderEspecialidades();
         renderSelectsGlobais();
       } catch (err) {
-        alert(err.message || "Erro ao excluir especialidade.");
+        showError("Erro ao excluir especialidade.", err);
       }
     });
 
@@ -373,33 +341,27 @@ function renderEspecialidades() {
   });
 }
 
-if (formEsp) {
-  formEsp.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const nome = espNomeInput.value.trim();
-    if (!nome) return;
+formEsp.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nome = espNomeInput.value.trim();
+  if (!nome) return;
 
-    const idEdicao = espIdInput.value ? Number(espIdInput.value) : null;
+  const idEdicao = espIdInput.value ? Number(espIdInput.value) : null;
 
-    try {
-      const espSalva = await apiSaveEspecialidade(idEdicao, nome);
-
-      if (idEdicao) {
-        const esp = especialidades.find((s) => s.id === idEdicao);
-        if (esp) esp.nome = espSalva.nome;
-      } else {
-        especialidades.push(espSalva);
-      }
-
-      espIdInput.value = "";
-      espNomeInput.value = "";
-      renderEspecialidades();
-      renderSelectsGlobais();
-    } catch (err) {
-      alert(err.message || "Erro ao salvar especialidade.");
-    }
-  });
-}
+  try {
+    await apiPost("especialidades.save", {
+      id: idEdicao || "",
+      nome
+    });
+    espIdInput.value = "";
+    espNomeInput.value = "";
+    await loadEspecialidades();
+    renderEspecialidades();
+    renderSelectsGlobais();
+  } catch (err) {
+    showError("Erro ao salvar especialidade.", err);
+  }
+});
 
 // ====================== CADASTROS - MÉDICOS ======================
 
@@ -425,7 +387,7 @@ function renderMedicos() {
     tdEsp.textContent = getEspecialidadeNome(med.especialidadeId || null);
 
     const tdPac = document.createElement("td");
-    tdPac.textContent = med.pacientesHora || "";
+    tdPac.textContent = med.pacientesHora ?? "";
 
     const tdAcoes = document.createElement("td");
     tdAcoes.classList.add("table-actions");
@@ -437,7 +399,7 @@ function renderMedicos() {
       medicoIdInput.value = med.id;
       medicoNomeInput.value = med.nome;
       medicoEspSelect.value = med.especialidadeId || "";
-      medicoPacientesHoraInput.value = med.pacientesHora || 4;
+      medicoPacientesHoraInput.value = med.pacientesHora ?? 0;
       medicoNomeInput.scrollIntoView({ behavior: "smooth", block: "center" });
       medicoNomeInput.focus();
     });
@@ -448,14 +410,14 @@ function renderMedicos() {
     btnDel.addEventListener("click", async () => {
       if (!confirm("Excluir médico/profissional?")) return;
       try {
-        await apiDeleteMedico(med.id);
-        medicos = medicos.filter((m) => m.id !== med.id);
+        await apiPost("medicos.delete", { id: med.id });
+        await loadMedicos();
         renderMedicos();
         renderSelectsGlobais();
         updateCallDisponibilizados();
         renderAgendaResumoMes();
       } catch (err) {
-        alert(err.message || "Erro ao excluir médico.");
+        showError("Erro ao excluir médico.", err);
       }
     });
 
@@ -472,49 +434,40 @@ function renderMedicos() {
   });
 }
 
-if (formMedico) {
-  formMedico.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const nome = medicoNomeInput.value.trim();
-    if (!nome) return;
+formMedico.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nome = medicoNomeInput.value.trim();
+  if (!nome) return;
 
-    const espId = medicoEspSelect.value ? Number(medicoEspSelect.value) : null;
-    const pacientesHora = Number(medicoPacientesHoraInput.value || 0);
-if (isNaN(pacientesHora) || pacientesHora < 0) {
-  alert("Informe uma quantidade válida de pacientes por hora (0 ou mais).");
-  return;
-}
+  const espId = medicoEspSelect.value
+    ? Number(medicoEspSelect.value)
+    : null;
+  const pacientesHora = Number(medicoPacientesHoraInput.value || 0) || 0; // pode 0
 
+  const idEdicao = medicoIdInput.value ? Number(medicoIdInput.value) : null;
 
-    const idEdicao = medicoIdInput.value ? Number(medicoIdInput.value) : null;
+  try {
+    await apiPost("medicos.save", {
+      id: idEdicao || "",
+      nome,
+      especialidadeId: espId ?? "",
+      pacientesHora
+    });
 
-    try {
-      const medSalvo = await apiSaveMedico(idEdicao, nome, espId, pacientesHora);
+    medicoIdInput.value = "";
+    medicoNomeInput.value = "";
+    medicoEspSelect.value = "";
+    medicoPacientesHoraInput.value = 0;
 
-      if (idEdicao) {
-        const med = medicos.find((m) => m.id === idEdicao);
-        if (med) {
-          med.nome = medSalvo.nome;
-          med.especialidadeId = medSalvo.especialidadeId;
-          med.pacientesHora = medSalvo.pacientesHora;
-        }
-      } else {
-        medicos.push(medSalvo);
-      }
-
-      medicoIdInput.value = "";
-      medicoNomeInput.value = "";
-      medicoEspSelect.value = "";
-      medicoPacientesHoraInput.value = 4;
-      renderMedicos();
-      renderSelectsGlobais();
-      updateCallDisponibilizados();
-      renderAgendaResumoMes();
-    } catch (err) {
-      alert(err.message || "Erro ao salvar médico.");
-    }
-  });
-}
+    await loadMedicos();
+    renderMedicos();
+    renderSelectsGlobais();
+    updateCallDisponibilizados();
+    renderAgendaResumoMes();
+  } catch (err) {
+    showError("Erro ao salvar médico.", err);
+  }
+});
 
 // ====================== SELECTS GLOBAIS ======================
 
@@ -523,6 +476,11 @@ const agendaMedicoSelect = document.getElementById("agenda-medico");
 const slotSalaSelect = document.getElementById("slot-sala");
 const slotMedicoSelect = document.getElementById("slot-medico");
 const callProfSelect = document.getElementById("call-profissional");
+
+// Cancelamentos (ajuste os IDs se forem diferentes no seu HTML)
+const cancelMedicoSelect = document.getElementById("cancel-medico");
+const cancelFiltroMedicoSelect = document.getElementById("cancel-filtro-medico");
+const cancelEspInput = document.getElementById("cancel-especialidade");
 
 function renderSelectsGlobais() {
   // Especialidades no cadastro médico
@@ -534,7 +492,7 @@ function renderSelectsGlobais() {
     medicoEspSelect.appendChild(opt);
   });
 
-  // Salas
+  // Salas em filtros e modal de slot
   agendaSalaSelect.innerHTML = `<option value="">Todas</option>`;
   slotSalaSelect.innerHTML = "";
   salas.forEach((s) => {
@@ -549,14 +507,19 @@ function renderSelectsGlobais() {
     slotSalaSelect.appendChild(opt2);
   });
 
-  // Médicos
-   // Médicos em filtros, modal slot e call center (ordenados por nome)
+  // Médicos em filtros, modal slot, call center e cancelamentos
   agendaMedicoSelect.innerHTML = `<option value="">Todos</option>`;
   slotMedicoSelect.innerHTML = `<option value="">Sem vínculo</option>`;
   callProfSelect.innerHTML = `<option value="">Geral</option>`;
+  if (cancelMedicoSelect) {
+    cancelMedicoSelect.innerHTML = `<option value="">Selecione...</option>`;
+  }
+  if (cancelFiltroMedicoSelect) {
+    cancelFiltroMedicoSelect.innerHTML = `<option value="">Todos</option>`;
+  }
 
   const medicosOrdenados = [...medicos].sort((a, b) =>
-    a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" })
+    a.nome.localeCompare(b.nome, "pt-BR")
   );
 
   medicosOrdenados.forEach((m) => {
@@ -574,9 +537,22 @@ function renderSelectsGlobais() {
     opt3.value = m.id;
     opt3.textContent = m.nome;
     callProfSelect.appendChild(opt3);
+
+    if (cancelMedicoSelect) {
+      const opt4 = document.createElement("option");
+      opt4.value = m.id;
+      opt4.textContent = m.nome;
+      cancelMedicoSelect.appendChild(opt4);
+    }
+
+    if (cancelFiltroMedicoSelect) {
+      const opt5 = document.createElement("option");
+      opt5.value = m.id;
+      opt5.textContent = m.nome;
+      cancelFiltroMedicoSelect.appendChild(opt5);
+    }
   });
 }
-
 
 // ====================== AGENDA ======================
 
@@ -607,37 +583,7 @@ const slotHoraInicioInput = document.getElementById("slot-hora-inicio");
 const slotHoraFimInput = document.getElementById("slot-hora-fim");
 const slotObsTextarea = document.getElementById("slot-obs");
 
-const extraDatesContainer = document.getElementById("slot-extra-dates-container");
-const btnAddExtraDate = document.getElementById("btn-add-extra-date");
-
-function clearExtraDates() {
-  if (extraDatesContainer) {
-    extraDatesContainer.innerHTML = "";
-  }
-}
-
-if (btnAddExtraDate && extraDatesContainer) {
-  btnAddExtraDate.addEventListener("click", () => {
-    const wrapper = document.createElement("div");
-    wrapper.classList.add("form-inline");
-
-    const input = document.createElement("input");
-    input.type = "date";
-    input.classList.add("slot-extra-date");
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.textContent = "Remover";
-    removeBtn.addEventListener("click", () => wrapper.remove());
-
-    wrapper.appendChild(input);
-    wrapper.appendChild(removeBtn);
-    extraDatesContainer.appendChild(wrapper);
-  });
-}
-
-
-// Resumo
+// Resumo de ocupação
 const resumoSalasTotal = document.getElementById("resumo-salas-total");
 const resumoSalasOcupadas = document.getElementById("resumo-salas-ocupadas");
 const resumoHorasPossiveis = document.getElementById("resumo-horas-possiveis");
@@ -664,10 +610,8 @@ btnNovoSlot.addEventListener("click", () => {
   slotSalaSelect.value = "";
   slotMedicoSelect.value = "";
   slotObsTextarea.value = "";
-  clearExtraDates();
   abrirModalAgenda("Novo horário");
 });
-
 
 // Tabs da agenda
 agendaTabs.forEach((tab) => {
@@ -686,11 +630,14 @@ agendaTabs.forEach((tab) => {
   });
 });
 
-// LISTA
+// LISTA DA AGENDA
+
 function renderAgendaLista() {
   const dataFiltro = agendaDataInput.value;
   const salaFiltro = agendaSalaSelect.value ? Number(agendaSalaSelect.value) : null;
-  const medicoFiltro = agendaMedicoSelect.value ? Number(agendaMedicoSelect.value) : null;
+  const medicoFiltro = agendaMedicoSelect.value
+    ? Number(agendaMedicoSelect.value)
+    : null;
 
   tableAgendaBody.innerHTML = "";
 
@@ -738,9 +685,6 @@ function renderAgendaLista() {
       slotSalaSelect.value = slot.salaId;
       slotMedicoSelect.value = slot.medicoId || "";
       slotObsTextarea.value = slot.obs || "";
-      clearExtraDates();
-abrirModalAgenda("Editar horário");
-
       abrirModalAgenda("Editar horário");
     });
 
@@ -750,12 +694,12 @@ abrirModalAgenda("Editar horário");
     btnDel.addEventListener("click", async () => {
       if (!confirm("Excluir horário da agenda?")) return;
       try {
-        await apiDeleteAgendaSlot(slot.id);
-        agendaSlots = agendaSlots.filter((s) => s.id !== slot.id);
+        await apiPost("agenda.delete", { id: slot.id });
+        await loadAgendaSlots();
         renderAgendaAll();
         updateCallDisponibilizados();
       } catch (err) {
-        alert(err.message || "Erro ao excluir horário.");
+        showError("Erro ao excluir horário da agenda.", err);
       }
     });
 
@@ -773,7 +717,8 @@ abrirModalAgenda("Editar horário");
   });
 }
 
-// GRADE
+// GRADE DIÁRIA
+
 function renderAgendaGrade() {
   tableAgendaGradeHead.innerHTML = "";
   tableAgendaGradeBody.innerHTML = "";
@@ -789,14 +734,21 @@ function renderAgendaGrade() {
     return;
   }
 
-  const medicoFiltro = agendaMedicoSelect.value ? Number(agendaMedicoSelect.value) : null;
-  const salaFiltro = agendaSalaSelect.value ? Number(agendaSalaSelect.value) : null;
+  const medicoFiltro = agendaMedicoSelect.value
+    ? Number(agendaMedicoSelect.value)
+    : null;
+
+  const salaFiltro = agendaSalaSelect.value
+    ? Number(agendaSalaSelect.value)
+    : null;
 
   const thHora = document.createElement("th");
   thHora.textContent = "Hora";
   tableAgendaGradeHead.appendChild(thHora);
 
-  const salasVisiveis = salas.filter((s) => (salaFiltro ? s.id === salaFiltro : true));
+  const salasVisiveis = salas.filter((s) =>
+    salaFiltro ? s.id === salaFiltro : true
+  );
 
   salasVisiveis.forEach((s) => {
     const thSala = document.createElement("th");
@@ -805,8 +757,7 @@ function renderAgendaGrade() {
   });
 
   const dateObj = new Date(data + "T00:00");
-  const dow = dateObj.getDay(); // 0=Dom
-
+  const dow = dateObj.getDay(); // 0=Dom, 6=Sáb
   let horaInicio = 7;
   let horaFim = 18;
 
@@ -861,7 +812,8 @@ function renderAgendaGrade() {
   }
 }
 
-// CALENDÁRIO
+// CALENDÁRIO MENSAL
+
 function renderAgendaCalendario() {
   agendaCalendarioGrid.innerHTML = "";
 
@@ -883,7 +835,9 @@ function renderAgendaCalendario() {
   const firstDow = firstDay.getDay();
   const daysInMonth = new Date(ano, mes + 1, 0).getDate();
 
-  const medicoFiltro = agendaMedicoSelect.value ? Number(agendaMedicoSelect.value) : null;
+  const medicoFiltro = agendaMedicoSelect.value
+    ? Number(agendaMedicoSelect.value)
+    : null;
 
   const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -922,7 +876,8 @@ function renderAgendaCalendario() {
   }
 }
 
-// RESUMO
+// RESUMO DE OCUPAÇÃO
+
 function renderAgendaResumoMes() {
   resumoSalasTotal.textContent = salas.length.toString();
 
@@ -1012,7 +967,6 @@ function renderAgendaResumoMes() {
   resumoOcupacaoPercent.textContent = ocupacao + "%";
 }
 
-// filtros
 formFiltroAgenda.addEventListener("submit", (e) => {
   e.preventDefault();
   renderAgendaAll();
@@ -1022,74 +976,46 @@ agendaDataInput.addEventListener("change", renderAgendaAll);
 agendaSalaSelect.addEventListener("change", renderAgendaAll);
 agendaMedicoSelect.addEventListener("change", renderAgendaAll);
 
-// salvar slot agenda
-formAgendaSlot.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const dataPrincipal = slotDataInput.value;
-  const horaInicio = slotHoraInicioInput.value;
-  const horaFim = slotHoraFimInput.value;
-  const salaId = Number(slotSalaSelect.value);
-  const medicoId = slotMedicoSelect.value ? Number(slotMedicoSelect.value) : null;
-  const obs = slotObsTextarea.value.trim();
+if (formAgendaSlot) {
+  formAgendaSlot.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const data = slotDataInput.value;
+    const horaInicio = slotHoraInicioInput.value;
+    const horaFim = slotHoraFimInput.value;
+    const salaId = Number(slotSalaSelect.value);
+    const medicoId = slotMedicoSelect.value
+      ? Number(slotMedicoSelect.value)
+      : null;
+    const obs = slotObsTextarea.value.trim();
 
-  if (!dataPrincipal || !horaInicio || !horaFim || !salaId) {
-    alert("Preencha data, horário e sala.");
-    return;
-  }
+    if (!data || !horaInicio || !horaFim || !salaId) {
+      alert("Preencha data, horário e sala.");
+      return;
+    }
 
-  const idEdicao = slotIdInput.value ? Number(slotIdInput.value) : null;
+    const idEdicao = slotIdInput.value ? Number(slotIdInput.value) : null;
 
-  // Coletar datas adicionais (se houver)
-  let datasAdicionais = [];
-  if (extraDatesContainer) {
-    datasAdicionais = Array.from(
-      extraDatesContainer.querySelectorAll("input.slot-extra-date")
-    )
-      .map((inp) => inp.value)
-      .filter((v) => v && v !== dataPrincipal);
-  }
-
-  try {
-    if (idEdicao) {
-      // Edição: só atualiza o slot principal
-      const slotSalvo = await apiSaveAgendaSlot(
-        idEdicao,
-        dataPrincipal,
+    try {
+      await apiPost("agenda.save", {
+        id: idEdicao || "",
+        data,
         horaInicio,
         horaFim,
         salaId,
-        medicoId,
+        medicoId: medicoId ?? "",
         obs
-      );
-      const slot = agendaSlots.find((s) => s.id === idEdicao);
-      if (slot) {
-        Object.assign(slot, slotSalvo);
-      }
-    } else {
-      // Novo: cria 1 slot para a data principal + 1 para cada data adicional
-      const todasDatas = [dataPrincipal, ...datasAdicionais];
-      for (const data of todasDatas) {
-        const slotSalvo = await apiSaveAgendaSlot(
-          null,
-          data,
-          horaInicio,
-          horaFim,
-          salaId,
-          medicoId,
-          obs
-        );
-        agendaSlots.push(slotSalvo);
-      }
+      });
+
+      fecharModalAgenda();
+      slotIdInput.value = "";
+      await loadAgendaSlots();
+      renderAgendaAll();
+      updateCallDisponibilizados();
+    } catch (err) {
+      showError(err.message || "Erro ao salvar horário.", err);
     }
-
-    fecharModalAgenda();
-    renderAgendaAll();
-    updateCallDisponibilizados();
-  } catch (err) {
-    alert(err.message || "Erro ao salvar horário.");
-  }
-});
-
+  });
+}
 
 agendaMesInput.addEventListener("change", () => {
   renderAgendaCalendario();
@@ -1128,9 +1054,12 @@ function updateCallDisponibilizados() {
     callDispInput.value = 0;
     return;
   }
-  const profissionalId = callProfSelect.value ? Number(callProfSelect.value) : null;
+  const profissionalId = callProfSelect.value
+    ? Number(callProfSelect.value)
+    : null;
 
   let total = 0;
+
   const slotsDoDia = agendaSlots.filter((s) => s.data === data);
 
   slotsDoDia.forEach((s) => {
@@ -1173,19 +1102,28 @@ function renderCall() {
     tdAg.textContent = c.agendados;
 
     const tdPercAg = document.createElement("td");
-    tdPercAg.textContent = calcularPerc(c.agendados, c.disponibilizados ?? 0);
+    tdPercAg.textContent = calcularPerc(
+      c.agendados,
+      c.disponibilizados ?? 0
+    );
 
     const tdConf = document.createElement("td");
     tdConf.textContent = c.confirmados;
 
     const tdPercConf = document.createElement("td");
-    tdPercConf.textContent = calcularPerc(c.confirmados, c.agendados);
+    tdPercConf.textContent = calcularPerc(
+      c.confirmados,
+      c.agendados
+    );
 
     const tdAt = document.createElement("td");
     tdAt.textContent = c.atendidos;
 
     const tdPercAt = document.createElement("td");
-    tdPercAt.textContent = calcularPerc(c.atendidos, c.confirmados);
+    tdPercAt.textContent = calcularPerc(
+      c.atendidos,
+      c.confirmados
+    );
 
     const tdAcoes = document.createElement("td");
     tdAcoes.classList.add("table-actions");
@@ -1212,12 +1150,12 @@ function renderCall() {
     btnDel.addEventListener("click", async () => {
       if (!confirm("Excluir registro de call?")) return;
       try {
-        await apiDeleteCallEntry(c.id);
-        callEntries = callEntries.filter((x) => x.id !== c.id);
+        await apiPost("call.delete", { id: c.id });
+        await loadCallEntries();
         renderCall();
         renderCallResumo();
       } catch (err) {
-        alert(err.message || "Erro ao excluir registro.");
+        showError("Erro ao excluir registro de call.", err);
       }
     });
 
@@ -1252,7 +1190,9 @@ function renderCallResumo() {
     return;
   }
 
-  const entriesMes = callEntries.filter((c) => c.data && c.data.startsWith(mesStr));
+  const entriesMes = callEntries.filter(
+    (c) => c.data && c.data.startsWith(mesStr)
+  );
 
   let disp = 0;
   let ag = 0;
@@ -1271,9 +1211,12 @@ function renderCallResumo() {
   callSumConf.textContent = conf.toString();
   callSumAt.textContent = at.toString();
 
-  callPercAg.textContent = disp > 0 ? ((ag / disp) * 100).toFixed(1) + "%" : "0%";
-  callPercConf.textContent = ag > 0 ? ((conf / ag) * 100).toFixed(1) + "%" : "0%";
-  callPercAt.textContent = conf > 0 ? ((at / conf) * 100).toFixed(1) + "%" : "0%";
+  callPercAg.textContent =
+    disp > 0 ? ((ag / disp) * 100).toFixed(1) + "%" : "0%";
+  callPercConf.textContent =
+    ag > 0 ? ((conf / ag) * 100).toFixed(1) + "%" : "0%";
+  callPercAt.textContent =
+    conf > 0 ? ((at / conf) * 100).toFixed(1) + "%" : "0%";
 }
 
 formCall.addEventListener("submit", async (e) => {
@@ -1282,7 +1225,9 @@ formCall.addEventListener("submit", async (e) => {
   updateCallDisponibilizados();
 
   const data = callDataInput.value;
-  const profissionalId = callProfSelect.value ? Number(callProfSelect.value) : null;
+  const profissionalId = callProfSelect.value
+    ? Number(callProfSelect.value)
+    : null;
   const disponibilizados = Number(callDispInput.value || 0);
   const agendados = Number(callAgendInput.value || 0);
   const confirmados = Number(callConfInput.value || 0);
@@ -1296,32 +1241,24 @@ formCall.addEventListener("submit", async (e) => {
   const idEdicao = callIdInput.value ? Number(callIdInput.value) : null;
 
   try {
-    const entrySalva = await apiSaveCallEntry(
-      idEdicao,
+    await apiPost("call.save", {
+      id: idEdicao || "",
       data,
-      profissionalId,
+      profissionalId: profissionalId ?? "",
       disponibilizados,
       agendados,
       confirmados,
       atendidos
-    );
-
-    if (idEdicao) {
-      const c = callEntries.find((x) => x.id === idEdicao);
-      if (c) {
-        Object.assign(c, entrySalva);
-      }
-    } else {
-      callEntries.push(entrySalva);
-    }
+    });
 
     callIdInput.value = "";
     formCall.reset();
     updateCallDisponibilizados();
+    await loadCallEntries();
     renderCall();
     renderCallResumo();
   } catch (err) {
-    alert(err.message || "Erro ao salvar registro de call.");
+    showError("Erro ao salvar registro de call.", err);
   }
 });
 
@@ -1335,6 +1272,249 @@ callDataInput.addEventListener("change", updateCallDisponibilizados);
 callProfSelect.addEventListener("change", updateCallDisponibilizados);
 callMesResumoInput.addEventListener("change", renderCallResumo);
 
+// ====================== CANCELAMENTOS ======================
+// (garanta que seu HTML tenha esses IDs)
+
+const formCancel = document.getElementById("form-cancel");
+const cancelIdInput = document.getElementById("cancel-id");
+const cancelDataInput = document.getElementById("cancel-data");
+const cancelHoraInicioInput = document.getElementById("cancel-hora-inicio");
+const cancelHoraFimInput = document.getElementById("cancel-hora-fim");
+const cancelCountEl = document.getElementById("cancel-count");
+
+const cancelQtdInput = document.getElementById("cancel-qtd");
+const cancelMotivoInput = document.getElementById("cancel-motivo");
+
+const cancelFiltroDataIni = document.getElementById("cancel-filtro-data-inicio");
+const cancelFiltroDataFim = document.getElementById("cancel-filtro-data-fim");
+
+const tableCancelBody = document.querySelector("#table-cancelamentos tbody");
+
+function calcularQtdCancelados() {
+  if (!cancelQtdInput) return;
+
+  const medicoId = cancelMedicoSelect && cancelMedicoSelect.value
+    ? Number(cancelMedicoSelect.value)
+    : null;
+  const med = medicoId ? getMedicoPorId(medicoId) : null;
+  if (!med || !med.pacientesHora) {
+    cancelQtdInput.value = 0;
+    return;
+  }
+
+  const hIniStr = cancelHoraInicioInput.value;
+  const hFimStr = cancelHoraFimInput.value;
+  if (!hIniStr || !hFimStr) {
+    cancelQtdInput.value = 0;
+    return;
+  }
+
+  const [hIni, mIni] = hIniStr.split(":").map(Number);
+  const [hFim, mFim] = hFimStr.split(":").map(Number);
+  const min = hFim * 60 + mFim - (hIni * 60 + mIni);
+  if (min <= 0) {
+    cancelQtdInput.value = 0;
+    return;
+  }
+
+  const horas = min / 60;
+  const qtd = Math.round(med.pacientesHora * horas);
+  cancelQtdInput.value = qtd;
+}
+
+if (cancelMedicoSelect) {
+  cancelMedicoSelect.addEventListener("change", () => {
+    const medicoId = cancelMedicoSelect.value
+      ? Number(cancelMedicoSelect.value)
+      : null;
+    const med = medicoId ? getMedicoPorId(medicoId) : null;
+    if (cancelEspInput) {
+      cancelEspInput.value = med && med.especialidadeId
+        ? getEspecialidadeNome(med.especialidadeId)
+        : "";
+    }
+    calcularQtdCancelados();
+  });
+}
+
+if (cancelHoraInicioInput) {
+  cancelHoraInicioInput.addEventListener("change", calcularQtdCancelados);
+}
+if (cancelHoraFimInput) {
+  cancelHoraFimInput.addEventListener("change", calcularQtdCancelados);
+}
+
+function renderCancelamentos() {
+  if (!tableCancelBody) return;
+
+  tableCancelBody.innerHTML = "";
+
+  let lista = [...cancelamentos];
+
+  const medicoFiltro = cancelFiltroMedicoSelect && cancelFiltroMedicoSelect.value
+    ? Number(cancelFiltroMedicoSelect.value)
+    : null;
+
+  const dataIni = cancelFiltroDataIni && cancelFiltroDataIni.value
+    ? cancelFiltroDataIni.value
+    : null;
+  const dataFim = cancelFiltroDataFim && cancelFiltroDataFim.value
+    ? cancelFiltroDataFim.value
+    : null;
+
+  lista = lista.filter((c) => {
+    if (medicoFiltro && c.medicoId !== medicoFiltro) return false;
+    if (dataIni && c.data < dataIni) return false;
+    if (dataFim && c.data > dataFim) return false;
+    return true;
+  });
+
+  // Atualiza o total no card
+  if (cancelCountEl) {
+    cancelCountEl.textContent = lista.length.toString();
+  }
+
+  // Mais recentes primeiro
+  lista.sort((a, b) => {
+    if (a.data !== b.data) return b.data.localeCompare(a.data);
+    return a.horaInicio.localeCompare(b.horaInicio);
+  });
+
+  lista.forEach((c) => {
+    const tr = document.createElement("tr");
+
+    const tdData = document.createElement("td");
+    tdData.textContent = c.data.split("-").reverse().join("/");
+
+    const tdHora = document.createElement("td");
+    tdHora.textContent = `${c.horaInicio} - ${c.horaFim}`;
+
+    const tdMed = document.createElement("td");
+    tdMed.textContent = c.medicoId ? getMedicoNome(c.medicoId) : "-";
+
+    const tdEsp = document.createElement("td");
+    tdEsp.textContent = c.especialidadeId
+      ? getEspecialidadeNome(c.especialidadeId)
+      : "";
+
+    const tdMotivo = document.createElement("td");
+    tdMotivo.textContent = c.motivo || "";
+
+    const tdAcoes = document.createElement("td");
+    tdAcoes.classList.add("table-actions");
+
+    const btnEdit = document.createElement("button");
+    btnEdit.type = "button";
+    btnEdit.textContent = "Editar";
+    btnEdit.addEventListener("click", () => {
+      cancelIdInput.value = c.id;
+      cancelDataInput.value = c.data;
+      if (cancelMedicoSelect) cancelMedicoSelect.value = c.medicoId || "";
+      if (cancelEspInput) {
+        cancelEspInput.value = c.especialidadeId
+          ? getEspecialidadeNome(c.especialidadeId)
+          : "";
+      }
+      cancelHoraInicioInput.value = c.horaInicio;
+      cancelHoraFimInput.value = c.horaFim;
+      if (cancelQtdInput) {
+        cancelQtdInput.value = c.qtdCancelados ?? 0;
+      }
+      cancelMotivoInput.value = c.motivo || "";
+      calcularQtdCancelados();
+    });
+
+    const btnDel = document.createElement("button");
+    btnDel.type = "button";
+    btnDel.textContent = "Excluir";
+    btnDel.addEventListener("click", async () => {
+      if (!confirm("Excluir cancelamento?")) return;
+      try {
+        await apiPost("cancelamentos.delete", { id: c.id });
+        await loadCancelamentos();
+        renderCancelamentos();
+      } catch (err) {
+        showError("Erro ao excluir cancelamento.", err);
+      }
+    });
+
+    tdAcoes.appendChild(btnEdit);
+    tdAcoes.appendChild(btnDel);
+
+    // Ordem EXATA das colunas do cabeçalho:
+    tr.appendChild(tdData);
+    tr.appendChild(tdHora);
+    tr.appendChild(tdMed);
+    tr.appendChild(tdEsp);
+    tr.appendChild(tdMotivo);
+    tr.appendChild(tdAcoes);
+
+    tableCancelBody.appendChild(tr);
+  });
+}
+
+// ====================== LOADERS (BUSCAM NO BANCO) ======================
+
+async function loadSalas() {
+  try {
+    const resp = await apiGet("salas.list");
+    salas = resp.salas || [];
+  } catch (err) {
+    showError("Erro ao carregar salas.", err);
+    salas = [];
+  }
+}
+
+async function loadEspecialidades() {
+  try {
+    const resp = await apiGet("especialidades.list");
+    especialidades = resp.especialidades || [];
+  } catch (err) {
+    showError("Erro ao carregar especialidades.", err);
+    especialidades = [];
+  }
+}
+
+async function loadMedicos() {
+  try {
+    const resp = await apiGet("medicos.list");
+    medicos = resp.medicos || [];
+  } catch (err) {
+    showError("Erro ao carregar médicos.", err);
+    medicos = [];
+  }
+}
+
+async function loadAgendaSlots() {
+  try {
+    const resp = await apiGet("agenda.list");
+    agendaSlots = resp.slots || [];
+  } catch (err) {
+    showError("Erro ao carregar agenda.", err);
+    agendaSlots = [];
+  }
+}
+
+async function loadCallEntries() {
+  try {
+    const resp = await apiGet("call.list");
+    callEntries = resp.entries || [];
+  } catch (err) {
+    showError("Erro ao carregar dados do call center.", err);
+    callEntries = [];
+  }
+}
+
+async function loadCancelamentos() {
+  try {
+    const resp = await apiGet("cancelamentos.list");
+    cancelamentos = resp.cancelamentos || [];
+  } catch (err) {
+    showError("Erro ao carregar cancelamentos.", err);
+    cancelamentos = [];
+  }
+}
+
 // ====================== INIT ======================
 
 function renderAgendaAll() {
@@ -1346,41 +1526,47 @@ function renderAgendaAll() {
 
 async function init() {
   try {
-    await apiListAll();
+    await loadSalas();
+    await loadEspecialidades();
+    await loadMedicos();
+    await Promise.all([
+      loadAgendaSlots(),
+      loadCallEntries(),
+      loadCancelamentos()
+    ]);
+
+    renderSalas();
+    renderEspecialidades();
+    renderMedicos();
+    renderSelectsGlobais();
+
+    const hojeDate = new Date();
+    const hoje =
+      hojeDate.getFullYear() +
+      "-" +
+      pad2(hojeDate.getMonth() + 1) +
+      "-" +
+      pad2(hojeDate.getDate());
+
+    agendaDataInput.value = hoje;
+    callDataInput.value = hoje;
+
+    const mesAtual = hoje.slice(0, 7);
+    agendaMesInput.value = mesAtual;
+    callMesResumoInput.value = mesAtual;
+
+    renderAgendaAll();
+    renderCall();
+    renderCallResumo();
+    updateCallDisponibilizados();
+    renderCancelamentos();
   } catch (err) {
-    alert(err.message || "Erro ao carregar dados do servidor.");
-    salas = [];
-    especialidades = [];
-    medicos = [];
-    agendaSlots = [];
-    callEntries = [];
+    showError("Erro ao iniciar o sistema.", err);
   }
-
-  renderSalas();
-  renderEspecialidades();
-  renderMedicos();
-  renderSelectsGlobais();
-
-  const hojeDate = new Date();
-  const hoje =
-    hojeDate.getFullYear() +
-    "-" +
-    pad2(hojeDate.getMonth() + 1) +
-    "-" +
-    pad2(hojeDate.getDate());
-
-  agendaDataInput.value = hoje;
-  callDataInput.value = hoje;
-
-  const mesAtual = hoje.slice(0, 7);
-  agendaMesInput.value = mesAtual;
-  callMesResumoInput.value = mesAtual;
-
-  renderAgendaAll();
-  renderCall();
-  renderCallResumo();
-  updateCallDisponibilizados();
 }
 
-// ao carregar a página, mostra o login
-verificarSessaoLogin();
+document.addEventListener("DOMContentLoaded", () => {
+  initLogin();
+});
+
+
