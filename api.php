@@ -1,13 +1,18 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 
+// Evita warnings/HTML quebrando o JSON (Hostinger adora fazer isso...)
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
 require 'conexao.php';
 
 $action = $_GET['action'] ?? '';
 
 function jsonResponse($success, $data = [], $httpCode = 200) {
     http_response_code($httpCode);
-    echo json_encode(array_merge(['success' => $success], $data));
+    echo json_encode(array_merge(['success' => $success], $data), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -36,9 +41,11 @@ function hasAgendaConflict(mysqli $conn, string $data, int $salaId, string $hora
 
     if ($ignoreId !== null) {
         $stmt = $conn->prepare($sql);
+        if (!$stmt) return true;
         $stmt->bind_param("sissi", $data, $salaId, $horaFim, $horaInicio, $ignoreId);
     } else {
         $stmt = $conn->prepare($sql);
+        if (!$stmt) return true;
         $stmt->bind_param("siss", $data, $salaId, $horaFim, $horaInicio);
     }
 
@@ -75,11 +82,13 @@ if ($action === 'salas.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($id) {
         $stmt = $conn->prepare("UPDATE salas SET nome = ? WHERE id = ?");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("si", $nome, $id);
         $ok = $stmt->execute();
         $stmt->close();
     } else {
         $stmt = $conn->prepare("INSERT INTO salas (nome) VALUES (?)");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("s", $nome);
         $ok = $stmt->execute();
         $id = $stmt->insert_id;
@@ -96,6 +105,7 @@ if ($action === 'salas.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM salas WHERE id = ?");
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();
@@ -130,11 +140,13 @@ if ($action === 'especialidades.save' && $_SERVER['REQUEST_METHOD'] === 'POST') 
 
     if ($id) {
         $stmt = $conn->prepare("UPDATE especialidades SET nome = ? WHERE id = ?");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("si", $nome, $id);
         $ok = $stmt->execute();
         $stmt->close();
     } else {
         $stmt = $conn->prepare("INSERT INTO especialidades (nome) VALUES (?)");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("s", $nome);
         $ok = $stmt->execute();
         $id = $stmt->insert_id;
@@ -151,6 +163,7 @@ if ($action === 'especialidades.delete' && $_SERVER['REQUEST_METHOD'] === 'POST'
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM especialidades WHERE id = ?");
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();
@@ -192,11 +205,13 @@ if ($action === 'medicos.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($id) {
         $stmt = $conn->prepare("UPDATE medicos SET nome = ?, especialidade_id = ?, pacientes_hora = ? WHERE id = ?");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("siii", $nome, $especialidadeId, $pacientesHora, $id);
         $ok = $stmt->execute();
         $stmt->close();
     } else {
         $stmt = $conn->prepare("INSERT INTO medicos (nome, especialidade_id, pacientes_hora) VALUES (?, ?, ?)");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("sii", $nome, $especialidadeId, $pacientesHora);
         $ok = $stmt->execute();
         $id = $stmt->insert_id;
@@ -220,6 +235,7 @@ if ($action === 'medicos.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM medicos WHERE id = ?");
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();
@@ -242,7 +258,7 @@ if ($action === 'agenda.list') {
     while ($row = $result->fetch_assoc()) {
         $slots[] = [
             'id'         => (int)$row['id'],
-            'data'       => $row['data'], // yyyy-mm-dd
+            'data'       => $row['data'],
             'horaInicio' => substr($row['hora_inicio'], 0, 5),
             'horaFim'    => substr($row['hora_fim'], 0, 5),
             'salaId'     => (int)$row['sala_id'],
@@ -266,7 +282,6 @@ if ($action === 'agenda.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         jsonResponse(false, ['error' => 'Dados obrigatórios da agenda não informados.'], 400);
     }
 
-    // 🔒 Verifica conflito de sala/horário na data
     if (hasAgendaConflict($conn, $data, $salaId, $horaInicio, $horaFim, $id)) {
         jsonResponse(false, ['error' => 'Já existe agenda nessa sala e horário para a data informada.'], 400);
     }
@@ -275,6 +290,7 @@ if ($action === 'agenda.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("UPDATE agenda_slots
                                 SET data = ?, hora_inicio = ?, hora_fim = ?, sala_id = ?, medico_id = ?, obs = ?
                                 WHERE id = ?");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("sssissi", $data, $horaInicio, $horaFim, $salaId, $medicoId, $obs, $id);
         $ok = $stmt->execute();
         $stmt->close();
@@ -282,6 +298,7 @@ if ($action === 'agenda.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("INSERT INTO agenda_slots
                                 (data, hora_inicio, hora_fim, sala_id, medico_id, obs)
                                 VALUES (?, ?, ?, ?, ?, ?)");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("sssiss", $data, $horaInicio, $horaFim, $salaId, $medicoId, $obs);
         $ok = $stmt->execute();
         $id = $stmt->insert_id;
@@ -308,6 +325,7 @@ if ($action === 'agenda.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM agenda_slots WHERE id = ?");
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();
@@ -358,6 +376,7 @@ if ($action === 'call.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("UPDATE call_entries
                                 SET data = ?, profissional_id = ?, disponibilizados = ?, agendados = ?, confirmados = ?, atendidos = ?
                                 WHERE id = ?");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("siiiiii", $data, $profissionalId, $disp, $ag, $conf, $at, $id);
         $ok = $stmt->execute();
         $stmt->close();
@@ -365,6 +384,7 @@ if ($action === 'call.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("INSERT INTO call_entries
                                 (data, profissional_id, disponibilizados, agendados, confirmados, atendidos)
                                 VALUES (?, ?, ?, ?, ?, ?)");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
         $stmt->bind_param("siiiii", $data, $profissionalId, $disp, $ag, $conf, $at);
         $ok = $stmt->execute();
         $id = $stmt->insert_id;
@@ -391,6 +411,7 @@ if ($action === 'call.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM call_entries WHERE id = ?");
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();
@@ -401,17 +422,6 @@ if ($action === 'call.delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ===================== CANCELAMENTOS ===================== */
-/*
- * Esperado no POST de save:
- *  - id (opcional, p/ edição)
- *  - data (yyyy-mm-dd)
- *  - medicoId (opcional)
- *  - especialidadeId (opcional)
- *  - horaInicio (HH:MM)
- *  - horaFim (HH:MM)
- *  - qtdCancelados (int)  -> calculado automático no front e enviado
- *  - motivo (texto)
- */
 
 if ($action === 'cancelamentos.list') {
     $sql = "SELECT id, data, medico_id, especialidade_id, hora_inicio, hora_fim,
@@ -441,8 +451,8 @@ if ($action === 'cancelamentos.list') {
 if ($action === 'cancelamentos.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $id              = isset($_POST['id']) && $_POST['id'] !== '' ? (int)$_POST['id'] : null;
     $data            = trim($_POST['data'] ?? '');
-    $medicoId        = isset($_POST['medicoId']) && $_POST['medicoId'] !== '' ? (int)$_POST['medicoId'] : null;
-    $especialidadeId = isset($_POST['especialidadeId']) && $_POST['especialidadeId'] !== '' ? (int)$_POST['especialidadeId'] : null;
+    $medicoIdRaw     = isset($_POST['medicoId']) ? trim((string)$_POST['medicoId']) : '';
+    $espIdRaw        = isset($_POST['especialidadeId']) ? trim((string)$_POST['especialidadeId']) : '';
     $horaInicio      = trim($_POST['horaInicio'] ?? '');
     $horaFim         = trim($_POST['horaFim'] ?? '');
     $qtdCancelados   = isset($_POST['qtdCancelados']) ? (int)$_POST['qtdCancelados'] : 0;
@@ -451,27 +461,40 @@ if ($action === 'cancelamentos.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($data === '' || $horaInicio === '' || $horaFim === '') {
         jsonResponse(false, ['error' => 'Data e horário são obrigatórios.'], 400);
     }
-
     if ($horaFim <= $horaInicio) {
         jsonResponse(false, ['error' => 'Horário final deve ser maior que o inicial.'], 400);
     }
-
     if ($qtdCancelados < 0) {
         jsonResponse(false, ['error' => 'Quantidade de cancelados inválida.'], 400);
     }
 
     if ($id) {
-        $stmt = $conn->prepare("UPDATE cancelamentos
-                                SET data = ?, medico_id = ?, especialidade_id = ?, hora_inicio = ?, hora_fim = ?, qtd_cancelados = ?, motivo = ?
-                                WHERE id = ?");
-        $stmt->bind_param("siissisi", $data, $medicoId, $especialidadeId, $horaInicio, $horaFim, $qtdCancelados, $motivo, $id);
+        $stmt = $conn->prepare("
+            UPDATE cancelamentos
+            SET data = ?,
+                medico_id = NULLIF(?, ''),
+                especialidade_id = NULLIF(?, ''),
+                hora_inicio = ?,
+                hora_fim = ?,
+                qtd_cancelados = ?,
+                motivo = ?
+            WHERE id = ?
+        ");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
+        $stmt->bind_param("sssssisi", $data, $medicoIdRaw, $espIdRaw, $horaInicio, $horaFim, $qtdCancelados, $motivo, $id);
         $ok = $stmt->execute();
         $stmt->close();
     } else {
-        $stmt = $conn->prepare("INSERT INTO cancelamentos
-                                (data, medico_id, especialidade_id, hora_inicio, hora_fim, qtd_cancelados, motivo)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("siissis", $data, $medicoId, $especialidadeId, $horaInicio, $horaFim, $qtdCancelados, $motivo);
+        $stmt = $conn->prepare("
+            INSERT INTO cancelamentos
+                (data, medico_id, especialidade_id, hora_inicio, hora_fim, qtd_cancelados, motivo)
+            VALUES
+                (?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
+        ");
+        if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
+
+        // ✅ CORRIGIDO: eram 7 valores, então tem que ser 7 tipos
+        $stmt->bind_param("sssssis", $data, $medicoIdRaw, $espIdRaw, $horaInicio, $horaFim, $qtdCancelados, $motivo);
         $ok = $stmt->execute();
         $id = $stmt->insert_id;
         $stmt->close();
@@ -481,14 +504,14 @@ if ($action === 'cancelamentos.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     jsonResponse(true, [
         'cancelamento' => [
-            'id'             => $id,
-            'data'           => $data,
-            'medicoId'       => $medicoId,
-            'especialidadeId'=> $especialidadeId,
-            'horaInicio'     => $horaInicio,
-            'horaFim'        => $horaFim,
-            'qtdCancelados'  => $qtdCancelados,
-            'motivo'         => $motivo
+            'id' => $id,
+            'data' => $data,
+            'medicoId' => $medicoIdRaw !== '' ? (int)$medicoIdRaw : null,
+            'especialidadeId' => $espIdRaw !== '' ? (int)$espIdRaw : null,
+            'horaInicio' => $horaInicio,
+            'horaFim' => $horaFim,
+            'qtdCancelados' => $qtdCancelados,
+            'motivo' => $motivo
         ]
     ]);
 }
@@ -498,6 +521,7 @@ if ($action === 'cancelamentos.delete' && $_SERVER['REQUEST_METHOD'] === 'POST')
     if ($id <= 0) jsonResponse(false, ['error' => 'ID inválido.'], 400);
 
     $stmt = $conn->prepare("DELETE FROM cancelamentos WHERE id = ?");
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
     $stmt->bind_param("i", $id);
     $ok = $stmt->execute();
     $stmt->close();
@@ -507,22 +531,22 @@ if ($action === 'cancelamentos.delete' && $_SERVER['REQUEST_METHOD'] === 'POST')
     jsonResponse(true);
 }
 
-/* ===================== MAPA CONFIG (OCUPAÇÃO) ===================== */
+/* ===================== MAPA CONFIG (POR DIA - DATA) ===================== */
 
 if ($action === 'mapconfig.list') {
-    $sql = "SELECT dia_semana, ativo, hora_inicio, hora_fim
-            FROM agenda_config_mapa
-            ORDER BY dia_semana ASC";
+    $sql = "SELECT data, conta, hora_inicio, hora_fim
+            FROM agenda_config_mapa_dia
+            ORDER BY data ASC";
     $result = $conn->query($sql);
     if (!$result) jsonResponse(false, ['error' => $conn->error], 500);
 
     $config = [];
     while ($row = $result->fetch_assoc()) {
-        $config[] = [
-            'diaSemana'  => (int)$row['dia_semana'],
-            'ativo'      => (int)$row['ativo'],
+        $data = $row['data'];
+        $config[$data] = [
+            'conta' => (int)$row['conta'] === 1,
             'horaInicio' => $row['hora_inicio'] ? substr($row['hora_inicio'], 0, 5) : null,
-            'horaFim'    => $row['hora_fim'] ? substr($row['hora_fim'], 0, 5) : null,
+            'horaFim' => $row['hora_fim'] ? substr($row['hora_fim'], 0, 5) : null
         ];
     }
 
@@ -537,37 +561,41 @@ if ($action === 'mapconfig.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         jsonResponse(false, ['error' => 'JSON inválido.'], 400);
     }
 
-    // Zera e recria os registros
-    if (!$conn->query("TRUNCATE agenda_config_mapa")) {
-        jsonResponse(false, ['error' => $conn->error], 500);
+    // Descobre quais meses existem no payload e apaga apenas esses meses
+    $meses = [];
+    foreach ($data as $dataStr => $_cfg) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataStr)) {
+            $meses[substr($dataStr, 0, 7)] = true; // YYYY-MM
+        }
+    }
+
+    foreach (array_keys($meses) as $ym) {
+        [$y, $m] = array_map('intval', explode('-', $ym));
+        $ini = sprintf('%04d-%02d-01', $y, $m);
+        $lastDay = (int)date('t', strtotime($ini));
+        $fim = sprintf('%04d-%02d-%02d', $y, $m, $lastDay);
+
+        $stmtDel = $conn->prepare("DELETE FROM agenda_config_mapa_dia WHERE data BETWEEN ? AND ?");
+        if (!$stmtDel) jsonResponse(false, ['error' => $conn->error], 500);
+        $stmtDel->bind_param("ss", $ini, $fim);
+        $stmtDel->execute();
+        $stmtDel->close();
     }
 
     $stmt = $conn->prepare("
-        INSERT INTO agenda_config_mapa (dia_semana, ativo, hora_inicio, hora_fim)
+        INSERT INTO agenda_config_mapa_dia (data, conta, hora_inicio, hora_fim)
         VALUES (?, ?, ?, ?)
     ");
-    if (!$stmt) {
-        jsonResponse(false, ['error' => $conn->error], 500);
-    }
+    if (!$stmt) jsonResponse(false, ['error' => $conn->error], 500);
 
-    foreach ($data as $cfg) {
-        $diaSemana  = isset($cfg['diaSemana']) ? (int)$cfg['diaSemana'] : 0;
-        $ativo      = !empty($cfg['ativo']) ? 1 : 0;
-        $horaInicio = $cfg['horaInicio'] ?? null;
-        $horaFim    = $cfg['horaFim'] ?? null;
+    foreach ($data as $dataStr => $cfg) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataStr)) continue;
 
-        if (!$ativo) {
-            $horaInicio = null;
-            $horaFim = null;
-        }
+        $conta = !empty($cfg['conta']) ? 1 : 0;
+        $horaInicio = $conta ? ($cfg['horaInicio'] ?? null) : null;
+        $horaFim    = $conta ? ($cfg['horaFim'] ?? null) : null;
 
-        $stmt->bind_param(
-            "iiss",
-            $diaSemana,
-            $ativo,
-            $horaInicio,
-            $horaFim
-        );
+        $stmt->bind_param("siss", $dataStr, $conta, $horaInicio, $horaFim);
         $ok = $stmt->execute();
         if (!$ok) {
             $stmt->close();
@@ -578,7 +606,6 @@ if ($action === 'mapconfig.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->close();
     jsonResponse(true, ['message' => 'Configuração salva com sucesso.']);
 }
-
 
 /* ===================== AÇÃO INVÁLIDA ===================== */
 

@@ -1,7 +1,7 @@
 // ====================== LOGIN / SESSÃO ======================
 
-const LOGIN_STORAGE_KEY = "mandacaru_agenda_logged";
-const LOGIN_USER = "agendamandacaru";
+const LOGIN_STORAGE_KEY = "maringa_agenda_logged";
+const LOGIN_USER = "agendamaringa";
 const LOGIN_PASS = "amor@100";
 
 function mostrarApp() {
@@ -135,6 +135,24 @@ function showError(msg, err) {
 function pad2(n) {
   return n.toString().padStart(2, "0");
 }
+
+// Safety net: nunca recarregar em submits dessas telas
+document.addEventListener(
+  "submit",
+  (e) => {
+    const id = e.target && e.target.id;
+    if (
+      id === "form-cancel" ||
+      id === "form-cancel-filtro" ||
+      id === "form-mapa-auth" ||
+      id === "form-mapa-config"
+    ) {
+      e.preventDefault();
+    }
+  },
+  true
+);
+
 
 // ====================== ESTADO ======================
 
@@ -1472,6 +1490,16 @@ if (formCancel) {
     }
   });
 }
+
+// FORM de filtro de cancelamentos (evita reload)
+const formCancelFiltro = document.getElementById("form-cancel-filtro");
+if (formCancelFiltro) {
+  formCancelFiltro.addEventListener("submit", (e) => {
+    e.preventDefault();
+    renderCancelamentos();
+  });
+}
+
 
 if (cancelFiltroMedicoSelect) {
   cancelFiltroMedicoSelect.addEventListener("change", renderCancelamentos);

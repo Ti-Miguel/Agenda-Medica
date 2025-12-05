@@ -1,8 +1,8 @@
 <?php
 $host = "localhost";
-$usuario = "u380360322_Magendamedica";
+$usuario = "u380360322_agendamedica";
 $senha = "Miguel847829";
-$banco = "u380360322_Magendamedica";
+$banco = "u380360322_agendamedica";
 
 $conn = new mysqli($host, $usuario, $senha, $banco);
 
