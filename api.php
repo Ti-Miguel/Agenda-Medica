@@ -507,6 +507,79 @@ if ($action === 'cancelamentos.delete' && $_SERVER['REQUEST_METHOD'] === 'POST')
     jsonResponse(true);
 }
 
+/* ===================== MAPA CONFIG (OCUPAÇÃO) ===================== */
+
+if ($action === 'mapconfig.list') {
+    $sql = "SELECT dia_semana, ativo, hora_inicio, hora_fim
+            FROM agenda_config_mapa
+            ORDER BY dia_semana ASC";
+    $result = $conn->query($sql);
+    if (!$result) jsonResponse(false, ['error' => $conn->error], 500);
+
+    $config = [];
+    while ($row = $result->fetch_assoc()) {
+        $config[] = [
+            'diaSemana'  => (int)$row['dia_semana'],
+            'ativo'      => (int)$row['ativo'],
+            'horaInicio' => $row['hora_inicio'] ? substr($row['hora_inicio'], 0, 5) : null,
+            'horaFim'    => $row['hora_fim'] ? substr($row['hora_fim'], 0, 5) : null,
+        ];
+    }
+
+    jsonResponse(true, ['config' => $config]);
+}
+
+if ($action === 'mapconfig.save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $json = $_POST['json'] ?? '';
+    $data = json_decode($json, true);
+
+    if (!is_array($data)) {
+        jsonResponse(false, ['error' => 'JSON inválido.'], 400);
+    }
+
+    // Zera e recria os registros
+    if (!$conn->query("TRUNCATE agenda_config_mapa")) {
+        jsonResponse(false, ['error' => $conn->error], 500);
+    }
+
+    $stmt = $conn->prepare("
+        INSERT INTO agenda_config_mapa (dia_semana, ativo, hora_inicio, hora_fim)
+        VALUES (?, ?, ?, ?)
+    ");
+    if (!$stmt) {
+        jsonResponse(false, ['error' => $conn->error], 500);
+    }
+
+    foreach ($data as $cfg) {
+        $diaSemana  = isset($cfg['diaSemana']) ? (int)$cfg['diaSemana'] : 0;
+        $ativo      = !empty($cfg['ativo']) ? 1 : 0;
+        $horaInicio = $cfg['horaInicio'] ?? null;
+        $horaFim    = $cfg['horaFim'] ?? null;
+
+        if (!$ativo) {
+            $horaInicio = null;
+            $horaFim = null;
+        }
+
+        $stmt->bind_param(
+            "iiss",
+            $diaSemana,
+            $ativo,
+            $horaInicio,
+            $horaFim
+        );
+        $ok = $stmt->execute();
+        if (!$ok) {
+            $stmt->close();
+            jsonResponse(false, ['error' => $conn->error], 500);
+        }
+    }
+
+    $stmt->close();
+    jsonResponse(true, ['message' => 'Configuração salva com sucesso.']);
+}
+
+
 /* ===================== AÇÃO INVÁLIDA ===================== */
 
 jsonResponse(false, ['error' => 'Ação inválida.'], 400);

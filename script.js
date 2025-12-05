@@ -6,14 +6,14 @@ const LOGIN_PASS = "amor@100";
 
 function mostrarApp() {
   const app = document.getElementById("app");
-  const login = document.getElementById("login-screen"); // <-- aqui
+  const login = document.getElementById("login-screen"); // <-- mesmo id do HTML
   if (app) app.style.display = "flex";
   if (login) login.style.display = "none";
 }
 
 function mostrarLogin() {
   const app = document.getElementById("app");
-  const login = document.getElementById("login-screen"); // <-- aqui
+  const login = document.getElementById("login-screen"); // <-- mesmo id do HTML
   if (app) app.style.display = "none";
   if (login) login.style.display = "flex";
 }
@@ -31,6 +31,10 @@ function initLogin() {
     }
     return;
   }
+
+  // Usuário fixo
+  userInput.value = LOGIN_USER;
+  userInput.readOnly = true;
 
   // Se já estiver logado, pula direto pro app
   if (sessionStorage.getItem(LOGIN_STORAGE_KEY) === "1") {
@@ -65,21 +69,6 @@ function initLogin() {
   });
 }
 
-
-// ====================== BOTÃO VOLTAR AO HUB ======================
-const btnHub = document.getElementById("btn-hub");
-
-if (btnHub) {
-  btnHub.addEventListener("click", () => {
-    // como o hub.html está na raiz da public_html:
-    window.location.href = "/hub.html";
-    // se por algum motivo não abrir, teste:
-    // window.location.href = "../hub.html";
-  });
-}
-
-
-
 // ====================== API HELPERS (PHP) ======================
 
 const API_BASE = "api.php";
@@ -96,8 +85,8 @@ async function apiGet(action, params = {}) {
   const res = await fetch(url.toString(), {
     method: "GET",
     headers: {
-      "Accept": "application/json"
-    }
+      Accept: "application/json",
+    },
   });
 
   const json = await res.json().catch(() => null);
@@ -123,9 +112,9 @@ async function apiPost(action, data = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      "Accept": "application/json"
+      Accept: "application/json",
     },
-    body: body.toString()
+    body: body.toString(),
   });
 
   const json = await res.json().catch(() => null);
@@ -155,6 +144,7 @@ let medicos = [];
 let agendaSlots = [];
 let callEntries = [];
 let cancelamentos = [];
+let mapaConfigPorData = {}; 
 
 // ====================== NAV / VIEWS ======================
 
@@ -175,7 +165,9 @@ menuItems.forEach((btn) => {
         ? "Cadastros"
         : viewName === "callcenter"
         ? "Call Center"
-        : "Cancelamentos";
+        : viewName === "cancelamentos"
+        ? "Cancelamentos"
+        : "Configuração do mapa";
 
     views.forEach((v) => v.classList.remove("view-active"));
     document.getElementById(`view-${viewName}`).classList.add("view-active");
@@ -271,7 +263,7 @@ formSala.addEventListener("submit", async (e) => {
   try {
     await apiPost("salas.save", {
       id: idEdicao || "",
-      nome
+      nome,
     });
     salaIdInput.value = "";
     salaNomeInput.value = "";
@@ -351,7 +343,7 @@ formEsp.addEventListener("submit", async (e) => {
   try {
     await apiPost("especialidades.save", {
       id: idEdicao || "",
-      nome
+      nome,
     });
     espIdInput.value = "";
     espNomeInput.value = "";
@@ -439,9 +431,7 @@ formMedico.addEventListener("submit", async (e) => {
   const nome = medicoNomeInput.value.trim();
   if (!nome) return;
 
-  const espId = medicoEspSelect.value
-    ? Number(medicoEspSelect.value)
-    : null;
+  const espId = medicoEspSelect.value ? Number(medicoEspSelect.value) : null;
   const pacientesHora = Number(medicoPacientesHoraInput.value || 0) || 0; // pode 0
 
   const idEdicao = medicoIdInput.value ? Number(medicoIdInput.value) : null;
@@ -451,7 +441,7 @@ formMedico.addEventListener("submit", async (e) => {
       id: idEdicao || "",
       nome,
       especialidadeId: espId ?? "",
-      pacientesHora
+      pacientesHora,
     });
 
     medicoIdInput.value = "";
@@ -477,7 +467,7 @@ const slotSalaSelect = document.getElementById("slot-sala");
 const slotMedicoSelect = document.getElementById("slot-medico");
 const callProfSelect = document.getElementById("call-profissional");
 
-// Cancelamentos (ajuste os IDs se forem diferentes no seu HTML)
+// Cancelamentos
 const cancelMedicoSelect = document.getElementById("cancel-medico");
 const cancelFiltroMedicoSelect = document.getElementById("cancel-filtro-medico");
 const cancelEspInput = document.getElementById("cancel-especialidade");
@@ -567,8 +557,12 @@ const agendaSubviewLista = document.getElementById("agenda-subview-lista");
 const agendaSubviewCalendario = document.getElementById("agenda-subview-calendario");
 const agendaSubviewGrade = document.getElementById("agenda-subview-grade");
 const agendaCalendarioGrid = document.getElementById("agenda-calendario-grid");
-const tableAgendaGradeHead = document.querySelector("#table-agenda-grade thead tr");
-const tableAgendaGradeBody = document.querySelector("#table-agenda-grade tbody");
+const tableAgendaGradeHead = document.querySelector(
+  "#table-agenda-grade thead tr"
+);
+const tableAgendaGradeBody = document.querySelector(
+  "#table-agenda-grade tbody"
+);
 
 // Modal
 const modalAgendaBackdrop = document.getElementById("modal-agenda-backdrop");
@@ -625,7 +619,8 @@ agendaTabs.forEach((tab) => {
     agendaSubviewGrade.classList.remove("agenda-subview-active");
 
     if (view === "lista") agendaSubviewLista.classList.add("agenda-subview-active");
-    if (view === "calendario") agendaSubviewCalendario.classList.add("agenda-subview-active");
+    if (view === "calendario")
+      agendaSubviewCalendario.classList.add("agenda-subview-active");
     if (view === "grade") agendaSubviewGrade.classList.add("agenda-subview-active");
   });
 });
@@ -876,7 +871,85 @@ function renderAgendaCalendario() {
   }
 }
 
-// RESUMO DE OCUPAÇÃO
+// ====================== RESUMO DE OCUPAÇÃO (USANDO MAPACONFIG) ======================
+
+function timeToMinutes(str) {
+  if (!str) return null;
+  const [h, m] = str.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function getDefaultMapaConfigForDow(dow) {
+  // 0 = Domingo, 1 = Segunda, ... 6 = Sábado
+  if (dow >= 1 && dow <= 5) {
+    return {
+      diaSemana: dow,
+      ativo: 1,
+      horaInicio: "07:00",
+      horaFim: "18:00",
+    };
+  }
+  if (dow === 6) {
+    return {
+      diaSemana: dow,
+      ativo: 1,
+      horaInicio: "07:00",
+      horaFim: "12:00",
+    };
+  }
+  // domingo, por padrão, não conta
+  return {
+    diaSemana: dow,
+    ativo: 0,
+    horaInicio: null,
+    horaFim: null,
+  };
+}
+
+// Agora leva em conta overrides por DATA, se existirem
+function getMapaConfigParaDiaStr(dataStr) {
+  if (!dataStr) {
+    return { conta: false, horaInicio: null, horaFim: null };
+  }
+
+  // 1) se tiver configuração específica para essa data, usa ela
+  const override = mapaConfigPorData && mapaConfigPorData[dataStr];
+  if (override) {
+    return {
+      conta: !!override.conta,
+      horaInicio: override.horaInicio || null,
+      horaFim: override.horaFim || null,
+    };
+  }
+
+  // 2) senão, cai na regra padrão por dia da semana
+  const partes = dataStr.split("-");
+  if (partes.length !== 3) {
+    return { conta: false, horaInicio: null, horaFim: null };
+  }
+
+  const ano = Number(partes[0]);
+  const mes = Number(partes[1]);
+  const dia = Number(partes[2]);
+  if (!ano || !mes || !dia) {
+    return { conta: false, horaInicio: null, horaFim: null };
+  }
+
+  const d = new Date(ano, mes - 1, dia);
+  const dow = d.getDay(); // 0=Dom, 1=Seg, ... 6=Sáb
+
+  const base = getDefaultMapaConfigForDow(dow);
+  if (!base || !base.ativo) {
+    return { conta: false, horaInicio: null, horaFim: null };
+  }
+
+  return {
+    conta: true,
+    horaInicio: base.horaInicio || null,
+    horaFim: base.horaFim || null,
+  };
+}
 
 function renderAgendaResumoMes() {
   resumoSalasTotal.textContent = salas.length.toString();
@@ -892,71 +965,58 @@ function renderAgendaResumoMes() {
 
   const [anoStr, mesStr2] = mesStr.split("-");
   const ano = Number(anoStr);
-  const mes = Number(mesStr2) - 1;
+  const mes = Number(mesStr2) - 1; // 0-11
 
   const daysInMonth = new Date(ano, mes + 1, 0).getDate();
 
-  let horasPossiveisBase = 0;
-
-  for (let dia = 1; dia <= daysInMonth; dia++) {
-    const d = new Date(ano, mes, dia);
-    const dow = d.getDay();
-    let horasDia = 0;
-
-    if (dow >= 1 && dow <= 5) horasDia = 11;
-    else if (dow === 6) horasDia = 5;
-
-    horasPossiveisBase += horasDia * salas.length;
-  }
-
+  let horasPossiveis = 0;
   let horasUsadas = 0;
-  let extraHoras = 0;
   const salasOcupadasSet = new Set();
 
+  // HORAS POSSÍVEIS (dia a dia)
+  for (let dia = 1; dia <= daysInMonth; dia++) {
+    const diaStr = ano + "-" + pad2(mes + 1) + "-" + pad2(dia);
+
+    const conf = getMapaConfigParaDiaStr(diaStr);
+    if (!conf.conta || !conf.horaInicio || !conf.horaFim) continue;
+
+    const [hIni, mIni] = conf.horaInicio.split(":").map(Number);
+    const [hFim, mFim] = conf.horaFim.split(":").map(Number);
+    const min = hFim * 60 + mFim - (hIni * 60 + mIni);
+    if (min <= 0) continue;
+
+    const horasDia = min / 60;
+    horasPossiveis += horasDia * salas.length;
+  }
+
+  // HORAS USADAS (slots dentro da janela configurada por dia)
   agendaSlots.forEach((slot) => {
     if (!slot.data || !slot.horaInicio || !slot.horaFim) return;
     if (!slot.data.startsWith(mesStr)) return;
 
-    salasOcupadasSet.add(slot.salaId);
+    const conf = getMapaConfigParaDiaStr(slot.data);
+    if (!conf.conta || !conf.horaInicio || !conf.horaFim) return;
 
-    const [hIni, mIni] = slot.horaInicio.split(":").map(Number);
-    const [hFim, mFim] = slot.horaFim.split(":").map(Number);
-    const slotStart = hIni * 60 + mIni;
-    const slotEnd = hFim * 60 + mFim;
-    const minutos = slotEnd - slotStart;
-    if (minutos <= 0) return;
-    const horas = minutos / 60;
+    const [sH, sM] = slot.horaInicio.split(":").map(Number);
+    const [eH, eM] = slot.horaFim.split(":").map(Number);
 
-    horasUsadas += horas;
+    const [cH1, cM1] = conf.horaInicio.split(":").map(Number);
+    const [cH2, cM2] = conf.horaFim.split(":").map(Number);
 
-    const d = new Date(slot.data + "T00:00");
-    const dow = d.getDay();
-    let stdStart = 0;
-    let stdEnd = 0;
+    const slotStart = sH * 60 + sM;
+    const slotEnd = eH * 60 + eM;
+    const confStart = cH1 * 60 + cM1;
+    const confEnd = cH2 * 60 + cM2;
 
-    if (dow >= 1 && dow <= 5) {
-      stdStart = 7 * 60;
-      stdEnd = 18 * 60;
-    } else if (dow === 6) {
-      stdStart = 7 * 60;
-      stdEnd = 12 * 60;
-    } else {
-      extraHoras += horas;
-      return;
-    }
+    const overlapStart = Math.max(slotStart, confStart);
+    const overlapEnd = Math.min(slotEnd, confEnd);
+    const overlapMin = overlapEnd > overlapStart ? overlapEnd - overlapStart : 0;
 
-    const overlapStart = Math.max(slotStart, stdStart);
-    const overlapEnd = Math.min(slotEnd, stdEnd);
-    let overlapMin = 0;
-    if (overlapEnd > overlapStart) overlapMin = overlapEnd - overlapStart;
-
-    const extraMin = minutos - overlapMin;
-    if (extraMin > 0) {
-      extraHoras += extraMin / 60;
+    if (overlapMin > 0) {
+      horasUsadas += overlapMin / 60;
+      salasOcupadasSet.add(slot.salaId);
     }
   });
-
-  const horasPossiveis = horasPossiveisBase + extraHoras;
 
   resumoSalasOcupadas.textContent = salasOcupadasSet.size.toString();
   resumoHorasPossiveis.textContent = horasPossiveis.toFixed(1);
@@ -967,60 +1027,8 @@ function renderAgendaResumoMes() {
   resumoOcupacaoPercent.textContent = ocupacao + "%";
 }
 
-formFiltroAgenda.addEventListener("submit", (e) => {
-  e.preventDefault();
-  renderAgendaAll();
-});
 
-agendaDataInput.addEventListener("change", renderAgendaAll);
-agendaSalaSelect.addEventListener("change", renderAgendaAll);
-agendaMedicoSelect.addEventListener("change", renderAgendaAll);
 
-if (formAgendaSlot) {
-  formAgendaSlot.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const data = slotDataInput.value;
-    const horaInicio = slotHoraInicioInput.value;
-    const horaFim = slotHoraFimInput.value;
-    const salaId = Number(slotSalaSelect.value);
-    const medicoId = slotMedicoSelect.value
-      ? Number(slotMedicoSelect.value)
-      : null;
-    const obs = slotObsTextarea.value.trim();
-
-    if (!data || !horaInicio || !horaFim || !salaId) {
-      alert("Preencha data, horário e sala.");
-      return;
-    }
-
-    const idEdicao = slotIdInput.value ? Number(slotIdInput.value) : null;
-
-    try {
-      await apiPost("agenda.save", {
-        id: idEdicao || "",
-        data,
-        horaInicio,
-        horaFim,
-        salaId,
-        medicoId: medicoId ?? "",
-        obs
-      });
-
-      fecharModalAgenda();
-      slotIdInput.value = "";
-      await loadAgendaSlots();
-      renderAgendaAll();
-      updateCallDisponibilizados();
-    } catch (err) {
-      showError(err.message || "Erro ao salvar horário.", err);
-    }
-  });
-}
-
-agendaMesInput.addEventListener("change", () => {
-  renderAgendaCalendario();
-  renderAgendaResumoMes();
-});
 
 // ====================== CALL CENTER ======================
 
@@ -1035,6 +1043,9 @@ const callLimparBtn = document.getElementById("call-limpar");
 const tableCallBody = document.querySelector("#table-call tbody");
 
 const callMesResumoInput = document.getElementById("call-mes-resumo");
+// campo (opcional) de mês na tela "Configurar mapa"
+const mapaMesInput = document.getElementById("mapa-mes");
+
 const callSumDisp = document.getElementById("call-sum-disp");
 const callSumAg = document.getElementById("call-sum-ag");
 const callSumConf = document.getElementById("call-sum-conf");
@@ -1102,28 +1113,19 @@ function renderCall() {
     tdAg.textContent = c.agendados;
 
     const tdPercAg = document.createElement("td");
-    tdPercAg.textContent = calcularPerc(
-      c.agendados,
-      c.disponibilizados ?? 0
-    );
+    tdPercAg.textContent = calcularPerc(c.agendados, c.disponibilizados ?? 0);
 
     const tdConf = document.createElement("td");
     tdConf.textContent = c.confirmados;
 
     const tdPercConf = document.createElement("td");
-    tdPercConf.textContent = calcularPerc(
-      c.confirmados,
-      c.agendados
-    );
+    tdPercConf.textContent = calcularPerc(c.confirmados, c.agendados);
 
     const tdAt = document.createElement("td");
     tdAt.textContent = c.atendidos;
 
     const tdPercAt = document.createElement("td");
-    tdPercAt.textContent = calcularPerc(
-      c.atendidos,
-      c.confirmados
-    );
+    tdPercAt.textContent = calcularPerc(c.atendidos, c.confirmados);
 
     const tdAcoes = document.createElement("td");
     tdAcoes.classList.add("table-actions");
@@ -1211,12 +1213,9 @@ function renderCallResumo() {
   callSumConf.textContent = conf.toString();
   callSumAt.textContent = at.toString();
 
-  callPercAg.textContent =
-    disp > 0 ? ((ag / disp) * 100).toFixed(1) + "%" : "0%";
-  callPercConf.textContent =
-    ag > 0 ? ((conf / ag) * 100).toFixed(1) + "%" : "0%";
-  callPercAt.textContent =
-    conf > 0 ? ((at / conf) * 100).toFixed(1) + "%" : "0%";
+  callPercAg.textContent = disp > 0 ? ((ag / disp) * 100).toFixed(1) + "%" : "0%";
+  callPercConf.textContent = ag > 0 ? ((conf / ag) * 100).toFixed(1) + "%" : "0%";
+  callPercAt.textContent = conf > 0 ? ((at / conf) * 100).toFixed(1) + "%" : "0%";
 }
 
 formCall.addEventListener("submit", async (e) => {
@@ -1248,7 +1247,7 @@ formCall.addEventListener("submit", async (e) => {
       disponibilizados,
       agendados,
       confirmados,
-      atendidos
+      atendidos,
     });
 
     callIdInput.value = "";
@@ -1273,75 +1272,35 @@ callProfSelect.addEventListener("change", updateCallDisponibilizados);
 callMesResumoInput.addEventListener("change", renderCallResumo);
 
 // ====================== CANCELAMENTOS ======================
-// (garanta que seu HTML tenha esses IDs)
 
 const formCancel = document.getElementById("form-cancel");
 const cancelIdInput = document.getElementById("cancel-id");
 const cancelDataInput = document.getElementById("cancel-data");
 const cancelHoraInicioInput = document.getElementById("cancel-hora-inicio");
 const cancelHoraFimInput = document.getElementById("cancel-hora-fim");
-const cancelCountEl = document.getElementById("cancel-count");
-
-const cancelQtdInput = document.getElementById("cancel-qtd");
 const cancelMotivoInput = document.getElementById("cancel-motivo");
 
 const cancelFiltroDataIni = document.getElementById("cancel-filtro-data-inicio");
 const cancelFiltroDataFim = document.getElementById("cancel-filtro-data-fim");
+const cancelCountEl = document.getElementById("cancel-count");
 
 const tableCancelBody = document.querySelector("#table-cancelamentos tbody");
 
-function calcularQtdCancelados() {
-  if (!cancelQtdInput) return;
-
-  const medicoId = cancelMedicoSelect && cancelMedicoSelect.value
-    ? Number(cancelMedicoSelect.value)
-    : null;
-  const med = medicoId ? getMedicoPorId(medicoId) : null;
-  if (!med || !med.pacientesHora) {
-    cancelQtdInput.value = 0;
-    return;
-  }
-
-  const hIniStr = cancelHoraInicioInput.value;
-  const hFimStr = cancelHoraFimInput.value;
-  if (!hIniStr || !hFimStr) {
-    cancelQtdInput.value = 0;
-    return;
-  }
-
-  const [hIni, mIni] = hIniStr.split(":").map(Number);
-  const [hFim, mFim] = hFimStr.split(":").map(Number);
-  const min = hFim * 60 + mFim - (hIni * 60 + mIni);
-  if (min <= 0) {
-    cancelQtdInput.value = 0;
-    return;
-  }
-
-  const horas = min / 60;
-  const qtd = Math.round(med.pacientesHora * horas);
-  cancelQtdInput.value = qtd;
-}
-
+// Sempre que mudar o médico, preenche a especialidade automaticamente
 if (cancelMedicoSelect) {
   cancelMedicoSelect.addEventListener("change", () => {
     const medicoId = cancelMedicoSelect.value
       ? Number(cancelMedicoSelect.value)
       : null;
     const med = medicoId ? getMedicoPorId(medicoId) : null;
-    if (cancelEspInput) {
-      cancelEspInput.value = med && med.especialidadeId
-        ? getEspecialidadeNome(med.especialidadeId)
-        : "";
-    }
-    calcularQtdCancelados();
-  });
-}
 
-if (cancelHoraInicioInput) {
-  cancelHoraInicioInput.addEventListener("change", calcularQtdCancelados);
-}
-if (cancelHoraFimInput) {
-  cancelHoraFimInput.addEventListener("change", calcularQtdCancelados);
+    if (cancelEspInput) {
+      cancelEspInput.value =
+        med && med.especialidadeId
+          ? getEspecialidadeNome(med.especialidadeId)
+          : "";
+    }
+  });
 }
 
 function renderCancelamentos() {
@@ -1351,16 +1310,20 @@ function renderCancelamentos() {
 
   let lista = [...cancelamentos];
 
-  const medicoFiltro = cancelFiltroMedicoSelect && cancelFiltroMedicoSelect.value
-    ? Number(cancelFiltroMedicoSelect.value)
-    : null;
+  const medicoFiltro =
+    cancelFiltroMedicoSelect && cancelFiltroMedicoSelect.value
+      ? Number(cancelFiltroMedicoSelect.value)
+      : null;
 
-  const dataIni = cancelFiltroDataIni && cancelFiltroDataIni.value
-    ? cancelFiltroDataIni.value
-    : null;
-  const dataFim = cancelFiltroDataFim && cancelFiltroDataFim.value
-    ? cancelFiltroDataFim.value
-    : null;
+  const dataIni =
+    cancelFiltroDataIni && cancelFiltroDataIni.value
+      ? cancelFiltroDataIni.value
+      : null;
+
+  const dataFim =
+    cancelFiltroDataFim && cancelFiltroDataFim.value
+      ? cancelFiltroDataFim.value
+      : null;
 
   lista = lista.filter((c) => {
     if (medicoFiltro && c.medicoId !== medicoFiltro) return false;
@@ -1369,16 +1332,16 @@ function renderCancelamentos() {
     return true;
   });
 
-  // Atualiza o total no card
-  if (cancelCountEl) {
-    cancelCountEl.textContent = lista.length.toString();
-  }
-
-  // Mais recentes primeiro
+  // Ordena por data (mais recentes primeiro) e por horário
   lista.sort((a, b) => {
     if (a.data !== b.data) return b.data.localeCompare(a.data);
     return a.horaInicio.localeCompare(b.horaInicio);
   });
+
+  // Atualiza o total no card "Total de cancelamentos (filtro)"
+  if (cancelCountEl) {
+    cancelCountEl.textContent = lista.length.toString();
+  }
 
   lista.forEach((c) => {
     const tr = document.createElement("tr");
@@ -1409,19 +1372,23 @@ function renderCancelamentos() {
     btnEdit.addEventListener("click", () => {
       cancelIdInput.value = c.id;
       cancelDataInput.value = c.data;
-      if (cancelMedicoSelect) cancelMedicoSelect.value = c.medicoId || "";
+
+      if (cancelMedicoSelect) {
+        cancelMedicoSelect.value = c.medicoId || "";
+      }
+
       if (cancelEspInput) {
         cancelEspInput.value = c.especialidadeId
           ? getEspecialidadeNome(c.especialidadeId)
           : "";
       }
+
       cancelHoraInicioInput.value = c.horaInicio;
       cancelHoraFimInput.value = c.horaFim;
-      if (cancelQtdInput) {
-        cancelQtdInput.value = c.qtdCancelados ?? 0;
-      }
       cancelMotivoInput.value = c.motivo || "";
-      calcularQtdCancelados();
+
+      cancelDataInput.scrollIntoView({ behavior: "smooth", block: "center" });
+      cancelDataInput.focus();
     });
 
     const btnDel = document.createElement("button");
@@ -1441,7 +1408,8 @@ function renderCancelamentos() {
     tdAcoes.appendChild(btnEdit);
     tdAcoes.appendChild(btnDel);
 
-    // Ordem EXATA das colunas do cabeçalho:
+    // Ordem das colunas igual ao HTML:
+    // Data | Hora | Médico | Especialidade | Motivo | Ações
     tr.appendChild(tdData);
     tr.appendChild(tdHora);
     tr.appendChild(tdMed);
@@ -1452,6 +1420,69 @@ function renderCancelamentos() {
     tableCancelBody.appendChild(tr);
   });
 }
+
+if (formCancel) {
+  formCancel.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const id = cancelIdInput.value ? Number(cancelIdInput.value) : null;
+    const data = cancelDataInput.value;
+
+    const medicoId =
+      cancelMedicoSelect && cancelMedicoSelect.value
+        ? Number(cancelMedicoSelect.value)
+        : null;
+
+    const med = medicoId ? getMedicoPorId(medicoId) : null;
+    const especialidadeId = med && med.especialidadeId ? med.especialidadeId : null;
+
+    const horaInicio = cancelHoraInicioInput.value;
+    const horaFim = cancelHoraFimInput.value;
+    const motivo = cancelMotivoInput.value.trim();
+
+    if (!data || !horaInicio || !horaFim) {
+      alert("Preencha data e horários.");
+      return;
+    }
+
+    if (!motivo) {
+      alert("Informe o motivo do cancelamento.");
+      return;
+    }
+
+    try {
+      await apiPost("cancelamentos.save", {
+        id: id || "",
+        data,
+        medicoId: medicoId ?? "",
+        especialidadeId: especialidadeId ?? "",
+        horaInicio,
+        horaFim,
+        motivo,
+      });
+
+      formCancel.reset();
+      cancelIdInput.value = "";
+      if (cancelEspInput) cancelEspInput.value = "";
+
+      await loadCancelamentos();
+      renderCancelamentos();
+    } catch (err) {
+      showError("Erro ao salvar cancelamento.", err);
+    }
+  });
+}
+
+if (cancelFiltroMedicoSelect) {
+  cancelFiltroMedicoSelect.addEventListener("change", renderCancelamentos);
+}
+if (cancelFiltroDataIni) {
+  cancelFiltroDataIni.addEventListener("change", renderCancelamentos);
+}
+if (cancelFiltroDataFim) {
+  cancelFiltroDataFim.addEventListener("change", renderCancelamentos);
+}
+
 
 // ====================== LOADERS (BUSCAM NO BANCO) ======================
 
@@ -1515,6 +1546,202 @@ async function loadCancelamentos() {
   }
 }
 
+async function loadMapaConfig() {
+  try {
+    const resp = await apiGet("mapconfig.list");
+    const cfg = resp.config;
+
+    // Vamos guardar sempre como objeto { "YYYY-MM-DD": { ... } }
+    if (cfg && typeof cfg === "object" && !Array.isArray(cfg)) {
+      mapaConfigPorData = cfg;
+    } else {
+      mapaConfigPorData = {};
+    }
+  } catch (err) {
+    showError("Erro ao carregar configuração do mapa.", err);
+    mapaConfigPorData = {};
+  }
+}
+
+// ====================== CONFIGURAÇÃO DO MAPA (VIEW) ======================
+
+const MAP_CONFIG_PASS = "miguel847829"; // senha só para configurar o mapa
+
+const mapaAuthForm = document.getElementById("form-mapa-auth");
+const mapaSenhaInput = document.getElementById("mapa-senha");
+const mapaAuthMsg = document.getElementById("mapa-auth-msg");
+const mapaMesContainer = document.getElementById("mapa-mes-container");
+const mapaConfigForm = document.getElementById("form-mapa-config");
+const mapaConfigTableBody = document.querySelector("#table-mapa-config tbody");
+
+// esse input já existia na parte do CALL center:
+
+const diasSemanaLabels = [
+  "Domingo",
+  "Segunda-feira",
+  "Terça-feira",
+  "Quarta-feira",
+  "Quinta-feira",
+  "Sexta-feira",
+  "Sábado",
+];
+
+// Monta a tabela por DIA DO MÊS
+function renderMapaConfigTable() {
+  if (!mapaConfigTableBody || !mapaMesInput || !mapaMesInput.value) return;
+
+  mapaConfigTableBody.innerHTML = "";
+
+  const [anoStr, mesStr] = mapaMesInput.value.split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr); // 1-12
+  if (!ano || !mes) return;
+
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const dataStr = anoStr + "-" + pad2(mes) + "-" + pad2(dia);
+    const d = new Date(ano, mes - 1, dia);
+    const dow = d.getDay(); // 0=Dom..6=Sáb
+
+    const base = getDefaultMapaConfigForDow(dow);
+    const override = mapaConfigPorData && mapaConfigPorData[dataStr];
+
+    const conta = override ? !!override.conta : !!base.ativo;
+    const horaInicio = override
+      ? (override.horaInicio || base.horaInicio || "")
+      : (base.horaInicio || "");
+    const horaFim = override
+      ? (override.horaFim || base.horaFim || "")
+      : (base.horaFim || "");
+
+    const tr = document.createElement("tr");
+    tr.dataset.data = dataStr;
+
+    const tdData = document.createElement("td");
+    tdData.textContent = pad2(dia) + "/" + pad2(mes) + "/" + anoStr;
+
+    const tdDiaSemana = document.createElement("td");
+    tdDiaSemana.textContent = diasSemanaLabels[dow] || `Dia ${dow}`;
+
+    const tdConta = document.createElement("td");
+    const chk = document.createElement("input");
+    chk.type = "checkbox";
+    chk.classList.add("mapa-conta");
+    chk.checked = conta;
+    tdConta.appendChild(chk);
+
+    const tdInicio = document.createElement("td");
+    const inputInicio = document.createElement("input");
+    inputInicio.type = "time";
+    inputInicio.classList.add("mapa-hora-inicio");
+    inputInicio.value = horaInicio || "";
+    tdInicio.appendChild(inputInicio);
+
+    const tdFim = document.createElement("td");
+    const inputFim = document.createElement("input");
+    inputFim.type = "time";
+    inputFim.classList.add("mapa-hora-fim");
+    inputFim.value = horaFim || "";
+    tdFim.appendChild(inputFim);
+
+    tr.appendChild(tdData);
+    tr.appendChild(tdDiaSemana);
+    tr.appendChild(tdConta);
+    tr.appendChild(tdInicio);
+    tr.appendChild(tdFim);
+
+    mapaConfigTableBody.appendChild(tr);
+  }
+}
+
+// Libera edição com senha
+if (mapaAuthForm && mapaSenhaInput) {
+  mapaAuthForm.addEventListener("submit", function (e) {
+    e.preventDefault(); // impede recarregar a página
+
+    const senha = mapaSenhaInput.value || "";
+    if (senha === MAP_CONFIG_PASS) {
+      if (mapaAuthMsg) {
+        mapaAuthMsg.textContent = "Edição liberada.";
+      }
+      if (mapaMesContainer) {
+        mapaMesContainer.style.display = "flex";
+      }
+      if (mapaConfigForm) {
+        mapaConfigForm.style.display = "block";
+      }
+
+      // se não tiver mês selecionado ainda, usa o mesmo da agenda ou o mês atual
+      if (mapaMesInput && !mapaMesInput.value) {
+        if (agendaMesInput && agendaMesInput.value) {
+          mapaMesInput.value = agendaMesInput.value;
+        } else {
+          const hoje = new Date();
+          const mesAtual =
+            hoje.getFullYear() + "-" + pad2(hoje.getMonth() + 1);
+          mapaMesInput.value = mesAtual;
+        }
+      }
+
+      renderMapaConfigTable();
+    } else {
+      if (mapaAuthMsg) {
+        mapaAuthMsg.textContent = "Senha incorreta.";
+      } else {
+        alert("Senha incorreta.");
+      }
+    }
+  });
+}
+
+// Salvar configuração por DIA
+if (mapaConfigForm) {
+  mapaConfigForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    if (!mapaConfigTableBody) return;
+
+    const rows = mapaConfigTableBody.querySelectorAll("tr");
+    const novaPorData = {};
+
+    rows.forEach((tr) => {
+      const dataStr = tr.dataset.data;
+      if (!dataStr) return;
+
+      const chk = tr.querySelector(".mapa-conta");
+      const inputInicio = tr.querySelector(".mapa-hora-inicio");
+      const inputFim = tr.querySelector(".mapa-hora-fim");
+
+      const conta = chk && chk.checked;
+      const horaInicio = inputInicio ? (inputInicio.value || null) : null;
+      const horaFim = inputFim ? (inputFim.value || null) : null;
+
+      novaPorData[dataStr] = {
+        conta,
+        horaInicio,
+        horaFim,
+      };
+    });
+
+    try {
+      await apiPost("mapconfig.save", {
+        json: JSON.stringify(novaPorData),
+      });
+
+      mapaConfigPorData = novaPorData;
+      alert("Configuração do mapa salva com sucesso.");
+      renderAgendaResumoMes(); // recalcula o resumo com as novas regras
+    } catch (err) {
+      showError("Erro ao salvar configuração do mapa.", err);
+    }
+  });
+}
+
+if (mapaMesInput) {
+  mapaMesInput.addEventListener("change", renderMapaConfigTable);
+}
+
 // ====================== INIT ======================
 
 function renderAgendaAll() {
@@ -1526,20 +1753,24 @@ function renderAgendaAll() {
 
 async function init() {
   try {
+    // carrega tudo do banco
     await loadSalas();
     await loadEspecialidades();
     await loadMedicos();
     await Promise.all([
       loadAgendaSlots(),
       loadCallEntries(),
-      loadCancelamentos()
+      loadCancelamentos(),
+      loadMapaConfig(),   // <-- carrega configuração do mapa
     ]);
 
+    // renderiza cadastros
     renderSalas();
     renderEspecialidades();
     renderMedicos();
     renderSelectsGlobais();
 
+    // datas padrão (hoje)
     const hojeDate = new Date();
     const hoje =
       hojeDate.getFullYear() +
@@ -1548,13 +1779,15 @@ async function init() {
       "-" +
       pad2(hojeDate.getDate());
 
-    agendaDataInput.value = hoje;
-    callDataInput.value = hoje;
+    if (agendaDataInput) agendaDataInput.value = hoje;
+    if (callDataInput) callDataInput.value = hoje;
 
-    const mesAtual = hoje.slice(0, 7);
-    agendaMesInput.value = mesAtual;
-    callMesResumoInput.value = mesAtual;
+    const mesAtual = hoje.slice(0, 7); // yyyy-mm
+    if (agendaMesInput) agendaMesInput.value = mesAtual;
+    if (callMesResumoInput) callMesResumoInput.value = mesAtual;
+    if (mapaMesInput) mapaMesInput.value = mesAtual;
 
+    // render geral
     renderAgendaAll();
     renderCall();
     renderCallResumo();
@@ -1568,5 +1801,3 @@ async function init() {
 document.addEventListener("DOMContentLoaded", () => {
   initLogin();
 });
-
-

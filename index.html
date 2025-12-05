@@ -51,19 +51,23 @@
       <button class="hub-button" id="btn-hub">← Voltar ao Hub</button>
 
       <nav class="menu">
-        <button class="menu-item active" data-view="agenda">
-          Agenda
-        </button>
-        <button class="menu-item" data-view="cadastros">
-          Cadastros
-        </button>
-        <button class="menu-item" data-view="callcenter">
-          Call Center
-        </button>
-        <button class="menu-item" data-view="cancelamentos">
-          Cancelamentos
-        </button>
-      </nav>
+  <button class="menu-item active" data-view="agenda">
+    Agenda
+  </button>
+  <button class="menu-item" data-view="cadastros">
+    Cadastros
+  </button>
+  <button class="menu-item" data-view="callcenter">
+    Call Center
+  </button>
+  <button class="menu-item" data-view="cancelamentos">
+    Cancelamentos
+  </button>
+  <button class="menu-item" data-view="mapconfig">
+    Configurar mapa
+  </button>
+</nav>
+
     </aside>
 
     <main class="main">
@@ -480,7 +484,7 @@
           </div>
         </section>
 
-        <!-- =================== VIEW: CANCELAMENTOS =================== -->
+               <!-- =================== VIEW: CANCELAMENTOS =================== -->
         <section class="view" id="view-cancelamentos">
           <div class="card">
             <div class="card-header">
@@ -581,6 +585,71 @@
             </div>
           </div>
         </section>
+
+     <!-- =================== VIEW: CONFIGURAR MAPA =================== -->
+<section class="view" id="view-mapconfig">
+  <div class="card">
+    <div class="card-header">
+      <h3>Configuração do mapa de ocupação das salas</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">
+        Defina, <strong>por dia do mês</strong>, quais horários contam para o cálculo de
+        <strong>ocupação das salas</strong>.
+        Por padrão: segunda a sexta das 07:00 às 18:00, sábado das 07:00 às 12:00
+        e domingo não conta.
+      </p>
+
+      <!-- Autorização por senha -->
+      <form id="form-mapa-auth" class="form-inline" style="margin-bottom: 12px;">
+        <input
+          type="password"
+          id="mapa-senha"
+          placeholder="Senha para liberar edição"
+          required
+        />
+        <button type="submit">Liberar edição</button>
+      </form>
+      <p class="text-muted" id="mapa-auth-msg"></p>
+
+      <!-- Escolha do mês (só aparece depois da senha correta) -->
+      <div id="mapa-mes-container" class="form-inline" style="margin-bottom: 12px; display: none;">
+        <label for="mapa-mes" style="margin-right: 8px;">Mês de referência</label>
+        <input type="month" id="mapa-mes" />
+      </div>
+
+      <!-- Form de configuração (inicia escondido) -->
+      <form id="form-mapa-config" class="form-grid" style="display: none;">
+        <div class="form-group form-group-full">
+          <div class="table-wrapper">
+            <table class="table" id="table-mapa-config">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Dia da semana</th>
+                  <th>Conta no mapa?</th>
+                  <th>Hora início</th>
+                  <th>Hora fim</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- preenchido via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="form-actions form-group-full">
+          <button type="submit">Salvar configuração</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+
+
+
 
       </section>
     </main>
