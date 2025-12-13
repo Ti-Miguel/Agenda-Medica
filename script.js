@@ -148,6 +148,18 @@ let mapaConfigPorData = {};
 const menuItems = document.querySelectorAll(".menu-item");
 const views = document.querySelectorAll(".view");
 const viewTitle = document.getElementById("view-title");
+// Botão para voltar ao Hub
+const btnHub = document.getElementById("btn-hub");
+
+// URL do seu Hub (ajuste aqui se for outro endereço)
+const HUB_URL = "https://amorsaudemaringa.com/hub.html"; // 🔁 TROCAR SE PRECISAR
+
+if (btnHub) {
+  btnHub.addEventListener("click", () => {
+    window.location.href = HUB_URL;
+  });
+}
+
 
 menuItems.forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -577,6 +589,11 @@ const resumoHorasPossiveis = document.getElementById("resumo-horas-possiveis");
 const resumoHorasUsadas = document.getElementById("resumo-horas-usadas");
 const resumoOcupacaoPercent = document.getElementById("resumo-ocupacao-percent");
 
+// dias adicionais
+const btnAddExtraDate = document.getElementById("btn-add-extra-date");
+const slotExtraDatesContainer = document.getElementById("slot-extra-dates-container");
+
+
 // ===== Eventos da AGENDA (data / filtros / mês) =====
 
 if (formFiltroAgenda) {
@@ -628,68 +645,130 @@ if (btnCancelarSlot) {
   btnCancelarSlot.addEventListener("click", fecharModalAgenda);
 }
 
-if (btnNovoSlot) {
-  btnNovoSlot.addEventListener("click", () => {
-    slotIdInput.value = "";
-    slotDataInput.value = agendaDataInput.value || "";
-    slotHoraInicioInput.value = "";
-    slotHoraFimInput.value = "";
-    slotSalaSelect.value = "";
-    slotMedicoSelect.value = "";
-    slotObsTextarea.value = "";
-    abrirModalAgenda("Novo horário");
+btnNovoSlot.addEventListener("click", () => {
+  slotIdInput.value = "";
+  slotDataInput.value = agendaDataInput.value || "";
+  slotHoraInicioInput.value = "";
+  slotHoraFimInput.value = "";
+  slotSalaSelect.value = "";
+  slotMedicoSelect.value = "";
+  slotObsTextarea.value = "";
+
+  // limpa sempre os dias extras ao abrir um novo cadastro
+  if (slotExtraDatesContainer) {
+    slotExtraDatesContainer.innerHTML = "";
+  }
+
+  abrirModalAgenda("Novo horário");
+});
+
+
+// ================== DIAS ADICIONAIS (EXTRA DATES) ==================
+
+function criarCampoExtraDate(valor = "") {
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("slot-extra-date-row");
+
+  const input = document.createElement("input");
+  input.type = "date";
+  input.classList.add("slot-extra-date");
+  if (valor) input.value = valor;
+
+  const btnRem = document.createElement("button");
+  btnRem.type = "button";
+  btnRem.textContent = "X";
+  btnRem.classList.add("btn-remove-extra-date");
+  btnRem.addEventListener("click", () => {
+    wrapper.remove();
+  });
+
+  wrapper.appendChild(input);
+  wrapper.appendChild(btnRem);
+  return wrapper;
+}
+
+if (btnAddExtraDate && slotExtraDatesContainer) {
+  btnAddExtraDate.addEventListener("click", () => {
+    const row = criarCampoExtraDate();
+    slotExtraDatesContainer.appendChild(row);
   });
 }
 
+
+
 // >>>>>>> SALVAR HORÁRIO DA AGENDA (NOVO / EDIÇÃO) <<<<<<<
 if (formAgendaSlot) {
-  formAgendaSlot.addEventListener("submit", async (e) => {
-    e.preventDefault();
+formAgendaSlot.addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-    const id =
-      slotIdInput && slotIdInput.value ? Number(slotIdInput.value) : null;
-    const data = slotDataInput.value;
-    const horaInicio = slotHoraInicioInput.value;
-    const horaFim = slotHoraFimInput.value;
-    const salaId = slotSalaSelect.value ? Number(slotSalaSelect.value) : 0;
-    const medicoId = slotMedicoSelect.value
-      ? Number(slotMedicoSelect.value)
-      : null;
-    const obs = slotObsTextarea.value.trim();
+  const idEdicao = slotIdInput.value ? Number(slotIdInput.value) : null;
+  const dataPrincipal = slotDataInput.value;
+  const horaInicio = slotHoraInicioInput.value;
+  const horaFim = slotHoraFimInput.value;
+  const salaId = Number(slotSalaSelect.value || 0);
+  const medicoId = slotMedicoSelect.value ? Number(slotMedicoSelect.value) : "";
+  const obs = slotObsTextarea.value.trim();
 
-    if (!data || !horaInicio || !horaFim || !salaId) {
-      alert("Preencha data, horários e sala.");
-      return;
-    }
+  if (!dataPrincipal || !horaInicio || !horaFim || !salaId) {
+    alert("Preencha data, horário e sala.");
+    return;
+  }
 
-    try {
+  // Monta lista de datas: principal + extras (sem repetir)
+  const datas = [dataPrincipal];
+
+  if (slotExtraDatesContainer) {
+    const inputsExtra = slotExtraDatesContainer.querySelectorAll(".slot-extra-date");
+    inputsExtra.forEach((inp) => {
+      const v = inp.value;
+      if (v && !datas.includes(v)) {
+        datas.push(v);
+      }
+    });
+  }
+
+  try {
+    if (idEdicao) {
+      // EDIÇÃO: altera somente a data principal (não mexe em outros dias)
       await apiPost("agenda.save", {
-        id: id || "",
-        data,
+        id: idEdicao,
+        data: dataPrincipal,
         horaInicio,
         horaFim,
         salaId,
-        medicoId: medicoId ?? "",
+        medicoId,
         obs,
       });
-
-      // Depois de salvar, fecha modal e recarrega tudo
-      formAgendaSlot.reset();
-      slotIdInput.value = "";
-      fecharModalAgenda();
-
-      // Mantém o filtro de data na data do slot salvo
-      if (agendaDataInput && data) {
-        agendaDataInput.value = data;
+    } else {
+      // NOVO: cria um slot para CADA data (principal + extras)
+      for (const data of datas) {
+        await apiPost("agenda.save", {
+          id: "",
+          data,
+          horaInicio,
+          horaFim,
+          salaId,
+          medicoId,
+          obs,
+        });
       }
-
-      await loadAgendaSlots();
-      renderAgendaAll();
-      updateCallDisponibilizados();
-    } catch (err) {
-      showError("Erro ao salvar horário da agenda.", err);
     }
-  });
+
+    // Fechar modal e limpar campos
+    fecharModalAgenda();
+    slotIdInput.value = "";
+    if (slotExtraDatesContainer) {
+      slotExtraDatesContainer.innerHTML = "";
+    }
+
+    await loadAgendaSlots();
+    renderAgendaAll();
+    updateCallDisponibilizados();
+  } catch (err) {
+    showError("Erro ao salvar horário da agenda.", err);
+  }
+});
+
 }
 
 // Tabs da agenda
@@ -757,16 +836,23 @@ function renderAgendaLista() {
     const btnEdit = document.createElement("button");
     btnEdit.type = "button";
     btnEdit.textContent = "Editar";
-    btnEdit.addEventListener("click", () => {
-      slotIdInput.value = slot.id;
-      slotDataInput.value = slot.data;
-      slotHoraInicioInput.value = slot.horaInicio;
-      slotHoraFimInput.value = slot.horaFim;
-      slotSalaSelect.value = slot.salaId;
-      slotMedicoSelect.value = slot.medicoId || "";
-      slotObsTextarea.value = slot.obs || "";
-      abrirModalAgenda("Editar horário");
-    });
+btnEdit.addEventListener("click", () => {
+  slotIdInput.value = slot.id;
+  slotDataInput.value = slot.data;
+  slotHoraInicioInput.value = slot.horaInicio;
+  slotHoraFimInput.value = slot.horaFim;
+  slotSalaSelect.value = slot.salaId;
+  slotMedicoSelect.value = slot.medicoId || "";
+  slotObsTextarea.value = slot.obs || "";
+
+  // edição é sempre de UMA data só → limpa campos extras
+  if (slotExtraDatesContainer) {
+    slotExtraDatesContainer.innerHTML = "";
+  }
+
+  abrirModalAgenda("Editar horário");
+});
+
 
     const btnDel = document.createElement("button");
     btnDel.type = "button";
