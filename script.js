@@ -1255,7 +1255,24 @@ function updateCallDisponibilizados() {
 function renderCall() {
   tableCallBody.innerHTML = "";
 
-  const lista = [...callEntries].sort((a, b) => a.data.localeCompare(b.data));
+  // 🗓 Mês selecionado no resumo
+  const mesFiltro = callMesResumoInput.value; // "YYYY-MM"
+
+  let lista = [...callEntries];
+
+  // Filtra pelo mês, se tiver algum selecionado
+  if (mesFiltro) {
+    lista = lista.filter((c) => c.data && c.data.startsWith(mesFiltro));
+  }
+
+  // Ordena do mais recente para o mais antigo
+  lista.sort((a, b) => {
+    if (a.data !== b.data) {
+      return b.data.localeCompare(a.data); // data mais nova primeiro
+    }
+    // se mesma data, último id (inserção mais recente) primeiro
+    return (b.id || 0) - (a.id || 0);
+  });
 
   lista.forEach((c) => {
     const tr = document.createElement("tr");
@@ -1338,6 +1355,7 @@ function renderCall() {
     tableCallBody.appendChild(tr);
   });
 }
+
 
 function renderCallResumo() {
   let mesStr = callMesResumoInput.value;
@@ -1429,7 +1447,12 @@ callLimparBtn.addEventListener("click", () => {
 
 callDataInput.addEventListener("change", updateCallDisponibilizados);
 callProfSelect.addEventListener("change", updateCallDisponibilizados);
-callMesResumoInput.addEventListener("change", renderCallResumo);
+callMesResumoInput.addEventListener("change", () => {
+  renderCallResumo(); // atualiza os cards
+  renderCall();       // atualiza a tabela filtrando pelo mês
+});
+
+// ====================== CANCELAMENTOS ======================
 
 // ====================== CANCELAMENTOS ======================
 
@@ -1440,11 +1463,14 @@ const cancelHoraInicioInput = document.getElementById("cancel-hora-inicio");
 const cancelHoraFimInput = document.getElementById("cancel-hora-fim");
 const cancelMotivoInput = document.getElementById("cancel-motivo");
 
+// NOVO: form dos filtros
+const formCancelFiltro = document.getElementById("form-cancel-filtro");
+
 const cancelFiltroDataIni = document.getElementById("cancel-filtro-data-inicio");
 const cancelFiltroDataFim = document.getElementById("cancel-filtro-data-fim");
 const cancelCountEl = document.getElementById("cancel-count");
 
-const tableCancelBody = document.querySelector("#table-cancelamentos tbody");
+const tableCancelBody = document.querySelector("#table-cancelamentos tbody"); // <-- ESSA LINHA TEM QUE EXISTIR
 
 // Sempre que mudar o médico, preenche a especialidade automaticamente
 if (cancelMedicoSelect) {
@@ -1492,6 +1518,7 @@ function renderCancelamentos() {
     return true;
   });
 
+  // Ordena por data (mais recentes primeiro) e por horário
   lista.sort((a, b) => {
     if (a.data !== b.data) return b.data.localeCompare(a.data);
     return a.horaInicio.localeCompare(b.horaInicio);
@@ -1577,6 +1604,7 @@ function renderCancelamentos() {
   });
 }
 
+
 if (formCancel) {
   formCancel.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1639,6 +1667,13 @@ if (cancelFiltroDataIni) {
 if (cancelFiltroDataFim) {
   cancelFiltroDataFim.addEventListener("change", renderCancelamentos);
 }
+if (formCancelFiltro) {
+  formCancelFiltro.addEventListener("submit", (e) => {
+    e.preventDefault();        // impede recarregar a página
+    renderCancelamentos();     // aplica os filtros atuais
+  });
+}
+
 
 // ====================== LOADERS (BUSCAM NO BANCO) ======================
 
